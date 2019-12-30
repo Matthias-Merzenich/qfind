@@ -1307,7 +1307,10 @@ int depthFirst(node theNode, long howDeep, uint32_t *pInd, uint32_t *pRemain, ro
          for(i = 1; i<= period; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
-         success(theNode, pRows, startRow - 1, currRow + period - 1);
+         #pragma omp critical(printWhileDeepening)
+         {
+            success(theNode, pRows, startRow - 1, currRow + period - 1);
+         }
          
          return 1;
          
