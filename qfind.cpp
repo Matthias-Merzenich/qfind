@@ -1,4 +1,4 @@
-/* qfind v0.2
+/* qfind v1.0
 ** A spaceship search program by Matthias Merzenich
 ** Based on code by David Eppstein, Paul Tooke, and "zdr"
 ** This is a first attempt at combining gfind and zfind.
@@ -10,9 +10,13 @@
 #include <string.h>
 #include <stdint.h>
 #include <omp.h>
+#include <time.h>
+#include "tab.cpp"
 
-#define BANNER "qfind v0.2 by Matthias Merzenich, 5 July 2017"
-#define FILEVERSION ((unsigned long) 2017070501)  //yyyymmddnn
+//#define NOCACHE
+
+#define BANNER "qfind v1.0 by Matthias Merzenich, 3 January 2019"
+#define FILEVERSION ((unsigned long) 2019010301)  //yyyymmddnn
 
 #define CHUNK_SIZE 64
 
@@ -20,32 +24,34 @@
 
 #define HASHBITS 21
 #define DEFAULT_DEPTHLIMIT (qBits-3)
-#define SEARCHLIMIT 50
+//#define SEARCHLIMIT 50
 
-#define P_RULE 0
-#define P_WIDTH 1
-#define P_PERIOD 2
-#define P_OFFSET 3
-#define P_SYMMETRY 4
-#define P_NUM_SHIPS 5
-#define P_REORDER 6
-#define P_CHECKPOINT 7
-#define P_BASEBITS 8
-#define P_QBITS 9
-#define P_HASHBITS 10
-#define P_DEPTHLIMIT 11
-#define P_NUMTHREADS 12
-#define P_INIT_ROWS 13
-#define P_MINDEEP 14
+#define P_WIDTH 0
+#define P_PERIOD 1
+#define P_OFFSET 2
+#define P_SYMMETRY 3
+#define P_REORDER 4
+#define P_CHECKPOINT 5
+#define P_BASEBITS 6
+#define P_QBITS 7
+#define P_HASHBITS 8 
+#define P_DEPTHLIMIT 9 
+#define P_NUMTHREADS 10
+#define P_INIT_ROWS 11
+#define P_MINDEEP 12
 
-#define NUM_PARAMS 15
+#define NUM_PARAMS 13
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
 #define SYM_EVEN 3
 #define SYM_GUTTER 4
 
-int bc[8] = {0, 1, 1, 2, 1, 2, 2, 3};
+const char *rule = "B3/S23";
+char loadRule[256]; //used for loading rule from file
+
+
+//int bc[8] = {0, 1, 1, 2, 1, 2, 2, 3};
 
 int params[NUM_PARAMS];
 int width;
@@ -60,12 +66,12 @@ int period;
 int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
 
 int offset;
-unsigned long rule;
+//unsigned long rule;
 
 int aborting;
 int nFound;
 
-enum mode {
+enum Mode {
    asymmetric,          /* basic orthogonal or diagonal pattern */
    odd, even,           /* orthogonal with bilateral symmetry */
    gutter,              /* orthogonal bilateral symmetry with empty column in middle */
@@ -85,6 +91,24 @@ typedef uint16_t row;
 row * rows;
 node * base;
 node * hash;
+
+int nttable[512] ;
+uint16_t **gInd3 ;
+uint32_t *gcount ;
+uint16_t *gRows;
+long long memusage ;
+long long memlimit = 0x7000000000000000LL ;
+
+int cachemem = 32 ; // megabytes for the cache
+#ifndef NOCACHE
+long long cachesize ;
+struct cacheentry {
+   uint16_t *p1, *p2, *p3 ;
+   int abn, r ;
+} *totalCache ;
+
+struct cacheentry **cache;
+#endif
 
 /*
 ** Representation of vertices.
@@ -109,7 +133,7 @@ node * hash;
 ** PARENT(b) returns the index of the parent of b
 */
 
-#define MAXWIDTH (10)
+#define MAXWIDTH (12)
 
 #define ROWBITS ((1<<width)-1)
 #define BASEBITS (params[P_BASEBITS])
@@ -135,22 +159,42 @@ void printRow(row theRow){
 /*  Lookup Tables to determine successor rows  */
 /* =========================================== */
 
-uint32_t *gInd;
-uint32_t *gcount;
-uint16_t *gRows;
-
-//uint32_t *pInd, *pRemain;
-//uint16_t *pRows;
-
 unsigned char *causesBirth;
 
+char nttable2[512] ;
 
-int evolveBit(int row1, int row2, int row3, int bshift){
-   int r;
-   r = bc[(row1 >> bshift) & 7];
-   r += bc[(row2 >> bshift) & 7] + 4 * ((row2 >> bshift) & 2);
-   r += bc[(row3 >> bshift) & 7];
-   return (rule >> r) & 1;
+void error(const char *s) {
+   fprintf(stderr, "%s\n", s) ;
+   exit(10) ;
+}
+
+int slowEvolveBit(int row1, int row2, int row3, int bshift){
+   return nttable[(((row2>>bshift) & 2)<<7) | (((row1>>bshift) & 2)<<6)
+                | (((row1>>bshift) & 4)<<4) | (((row2>>bshift) & 4)<<3)
+                | (((row3>>bshift) & 7)<<2) | (((row2>>bshift) & 1)<<1)
+                |  ((row1>>bshift) & 1)<<0];
+}
+
+void fasterTable() {
+   int p = 0 ;
+   for (int row1=0; row1<8; row1++)
+      for (int row2=0; row2<8; row2++)
+         for (int row3=0; row3<8; row3++)
+            nttable2[p++] = slowEvolveBit(row1, row2, row3, 0) ;
+}
+
+int evolveBit(int row1, int row2, int row3, int bshift) {
+   return nttable2[
+      (((row1 << 6) >> bshift) & 0700) +
+      (((row2 << 3) >> bshift) &  070) +
+      (( row3       >> bshift) &   07)] ;
+}
+
+int evolveBit(int row1, int row2, int row3) {
+   return nttable2[
+      ((row1 << 6) & 0700) +
+      ((row2 << 3) &  070) +
+      ( row3       &   07)] ;
 }
 
 int evolveRow(int row1, int row2, int row3){
@@ -159,7 +203,7 @@ int evolveRow(int row1, int row2, int row3){
    int j,s = 0;
    if(params[P_SYMMETRY] == SYM_ODD) s = 1;
    if(evolveBit(row1, row2, row3, width - 1)) return -1;
-   if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2, 0)) return -1;
+   if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
    if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
       row1_s = (row1 << 1) + ((row1 >> s) & 1);
       row2_s = (row2 << 1) + ((row2 >> s) & 1);
@@ -170,14 +214,45 @@ int evolveRow(int row1, int row2, int row3){
       row2_s = (row2 << 1);
       row3_s = (row3 << 1);
    }
-   row4 = evolveBit(row1_s, row2_s, row3_s, 0);
+   row4 = evolveBit(row1_s, row2_s, row3_s);
    for(j = 1; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
    return row4;
 }
 
-void sortRows(uint32_t rowSet){
-   uint32_t totalRows = gInd[rowSet + 1] - gInd[rowSet];
-   uint16_t *theRow = &(gRows[gInd[rowSet]]);
+int evolveRowHigh(int row1, int row2, int row3, int bits){
+   int row4=0;
+   int row1_s,row2_s,row3_s;
+   int j ;
+   if(evolveBit(row1, row2, row3, width - 1)) return -1;
+   row1_s = (row1 << 1);
+   row2_s = (row2 << 1);
+   row3_s = (row3 << 1);
+   for(j = width-bits; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
+   return row4;
+}
+
+int evolveRowLow(int row1, int row2, int row3, int bits){
+   int row4;
+   int row1_s,row2_s,row3_s;
+   int j,s = 0;
+   if(params[P_SYMMETRY] == SYM_ODD) s = 1;
+   if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
+   if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
+      row1_s = (row1 << 1) + ((row1 >> s) & 1);
+      row2_s = (row2 << 1) + ((row2 >> s) & 1);
+      row3_s = (row3 << 1) + ((row3 >> s) & 1);
+   }
+   else{
+      row1_s = (row1 << 1);
+      row2_s = (row2 << 1);
+      row3_s = (row3 << 1);
+   }
+   row4 = evolveBit(row1_s, row2_s, row3_s);
+   for(j = 1; j < bits; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
+   return row4;
+}
+
+void sortRows(uint16_t *theRow, uint32_t totalRows) {
    uint32_t i;
    int64_t j;
    uint16_t t;
@@ -191,55 +266,242 @@ void sortRows(uint32_t rowSet){
       theRow[j+1] = t;
    }
 }
+uint16_t *makeRow(int row1, int row2) ;
 
-void makeTables(){
-   printf("\nBuilding lookup tables... ");
+uint16_t *getoffset(int row12) {
+   uint16_t *r = gInd3[row12] ;
+   if (r == 0)
+      r = makeRow(row12 >> width, row12 & ((1 << width) - 1)) ;
+   return r ;
+}
+uint16_t *getoffset(int row1, int row2) {
+   return getoffset((row1 << width) + row2) ;
+}
 
-   causesBirth = malloc((long long)sizeof(*causesBirth) << width);
-
-   gInd = malloc(((long long)sizeof(*gInd) << (width * 3)) + sizeof(*gInd));
-   gcount = malloc((long long)sizeof(*gcount) * (1 << width));
+void getoffsetcount(int row1, int row2, int row3, uint16_t* &p, int &n) {
+   uint16_t *theRow = getoffset(row1, row2) ;
+   p = theRow + theRow[row3] ;
+   n = theRow[row3+1] - theRow[row3] ;
+}
+int getcount(int row1, int row2, int row3) {
+   uint16_t *theRow = getoffset(row1, row2) ;
+   return theRow[row3+1] - theRow[row3] ;
+}
+int *gWorkConcat ;      //gWork replaced with gWorkConcat to be parceled out between threads.
+int *rowHash ;
+uint16_t *valorder ;
+void genStatCounts() ;
+void makeTables() {
+   
+   causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth) << width);
+   
+   
+   gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2))) ;
+   rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2))) ;
+   for (int i=0; i<1<<(2*width); i++)
+      gInd3[i] = 0 ;
+   for (int i=0; i<2<<(2*width); i++)
+      rowHash[i] = -1 ;
+// ev2Rows = (uint16_t *)calloc(sizeof(*ev2Rows), (1LL << (width * 2)));          ev2Rows is not needed for qfind
+   gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
+// memusage += (sizeof(*gInd3)+sizeof(*ev2Rows)+2*sizeof(int)) << (width*2) ;
+   memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2) ;
    uint32_t i;
-   int row1,row2,row3,row4;
-   long int rows123,rows124;
-   uint32_t numValid = 0;
-
-   for(row1 = 0; row1 < 1 << width; row1++) causesBirth[row1] = (evolveRow(row1,0,0) ? 1 : 0);
-
-   for(i = 0; i < 1 << width; ++i) gcount[i] = 0;
-   for(i = 0; i < ((1 << (3 * width)) + 1); i++)gInd[i] = 0;
-   rows123 = -1;     //represents row1, row2, and row3 stacked vertically
-   for(row1 = 0; row1 < 1 << width; row1++)for(row2 = 0; row2 < 1 << width; row2++)for(row3 = 0; row3 < 1 << width; row3++){
-      rows123++;
-      row4 = evolveRow(row1,row2,row3);
-      if(row4 < 0) continue;
-      ++gcount[row4];
-      gInd[rows123 - row3 + row4]++;
-      numValid++;
-   }
-   gRows = malloc(2 * numValid);
-   for(rows124 = 1; rows124 < 1 << (3 * width); rows124++) gInd[rows124] += gInd[rows124 - 1];
-   gInd[1 << (3 * width)] = gInd[(1 << (3 * width)) - 1];  //extra needed for last set to calculate number
-   rows123 = -1;
-   for(row1 = 0; row1 < 1 << width; row1++)for(row2 = 0; row2 < 1 << width; row2++)for(row3 = 0; row3 < 1 << width; row3++){
-      rows123++;
-      row4 = evolveRow(row1,row2,row3);
-      if(row4 < 0) continue;
-      rows124 = rows123 - row3 + row4;
-      gInd[rows124]--;
-      gRows[gInd[rows124]] = (uint16_t)row3;
-   }
-   printf("Lookup tables built.\n");
-
-   gcount[0] = UINT32_MAX;
-   if(params[P_REORDER]){
-      printf("Sorting lookup table..... ");
-      for(rows124 = 0; rows124 < 1 << (3 * width); ++rows124){
-         sortRows(rows124);
+   for(i = 0; i < 1 << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
+   for(i = 0; i < 1 << width; ++i) gcount[i] = 0 ;
+// for (int i=0; i<1<<(2*width); i++)
+//    ev2Rows[i] = 0 ;
+   gWorkConcat = (int *)calloc(sizeof(int), (3LL * params[P_NUMTHREADS]) << width);
+   if (params[P_REORDER] == 1)
+      genStatCounts() ;
+//   if (params[P_REORDER] == 2) {                           random order doesn't make much sense for a breadth-first search
+//      std::mt19937 mt_rand(time(0));
+//      for (int i=1; i<1<<width; i++)
+//         gcount[i] = 1 + (mt_rand() & 0x3fffffff) ;
+//   }
+   if (params[P_REORDER] == 3)
+      for (int i=1; i<1<<width; i++)
+         gcount[i] = 1 + gcount[i & (i - 1)] ;
+   gcount[0] = 0xffffffff;  //Maximum possible value
+   valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width) ;
+   for (int i=0; i<1<<width; i++)
+      valorder[i] = (1<<width)-1-i ;
+   if (params[P_REORDER] != 0)
+      sortRows(valorder, 1<<width) ;
+   for (int row2=0; row2<1<<width; row2++)
+      makeRow(0, row2) ;
+}
+uint16_t *bbuf ;
+int bbuf_left = 0 ;
+// reduce fragmentation by allocating chunks larger than needed and
+// parceling out the small pieces.
+uint16_t *bmalloc(int siz) {
+   if (siz > bbuf_left) {
+      bbuf_left = 1 << (2 * width) ;
+      memusage += 2*bbuf_left ;
+      if (memusage > memlimit) {
+         printf("Aborting due to excessive memory usage\n") ;
+         exit(0) ;
       }
-      printf("Lookup table sorted.\n");
+      bbuf = (uint16_t *)calloc(sizeof(uint16_t), bbuf_left) ;
    }
-   free(gcount);
+   uint16_t *r = bbuf ;
+   bbuf += siz ;
+   bbuf_left -= siz ;
+   return r ;
+}
+void unbmalloc(int siz) {
+   bbuf -= siz ;
+   bbuf_left += siz ;
+}
+unsigned int hashRow(uint16_t *theRow, int siz) {
+   unsigned int h = 0 ;
+   for (int i=0; i<siz; i++)
+      h = h * 3 + theRow[i] ;
+   return h ;
+}
+
+uint16_t *makeRow(int row1, int row2) {
+   int good = 0 ;
+   int *gWork = gWorkConcat + ((3LL * omp_get_thread_num()) << width);      //Set up gWork for this particular thread
+   int *gWork2 = gWork + (1 << width) ;
+   int *gWork3 = gWork2 + (1 << width) ;
+   if (width < 4) {
+      for (int row3=0; row3<1<<width; row3++)
+         gWork3[row3] = evolveRow(row1, row2, row3) ;
+   } else {
+      int lowbitcount = (width >> 1) + 1 ;
+      int hibitcount = ((width + 1) >> 1) + 1 ;
+      int hishift = lowbitcount - 2 ;
+      int lowcount = 1 << lowbitcount ;
+      for (int row3=0; row3<1<<lowbitcount; row3++)
+         gWork2[row3] = evolveRowLow(row1, row2, row3, lowbitcount-1) ;
+      for (int row3=0; row3<1<<width; row3 += 1<<hishift)
+         gWork2[lowcount+(row3>>hishift)] =
+                        evolveRowHigh(row1, row2, row3, hibitcount-1) ;
+      for (int row3=0; row3<1<<width; row3++)
+         gWork3[row3] = gWork2[row3 & ((1<<lowbitcount) - 1)] |
+                        gWork2[lowcount+(row3 >> hishift)] ;
+   }
+   for (int row3i = 0; row3i < 1<<width; row3i++) {
+      int row3 = valorder[row3i] ;
+//      int row23 = (row2 << width) + row3 ;
+      int row4 = gWork3[row3] ;
+      if (row4 < 0)
+         continue ;
+//      if (row1 == 0)
+//         ev2Rows[row23] = row4 ;
+      gWork2[good] = row3 ;
+      gWork[good++] = row4 ;
+   }
+   
+// bmalloc, unbmalloc, and all operations that read or write to row, rowHash,
+// and gInd3 must be included in a critical region.
+// 
+// It might be better to allocate some memory to calculate the values in the
+// row array, and then transfer them after mutex is given and bmalloc is called.
+// Alternatively, perhaps each thread can have its own bmalloc buffer.
+// I'm just doing the most naive thing for now and giving the mutex here.
+
+   uint16_t *theRow;
+  #pragma omp critical(updateTable)
+  {
+      theRow = bmalloc((1+(1<<width)+good)) ;
+      for (int row3=0; row3 < 1<<width; row3++)
+         theRow[row3] = 0 ;
+      theRow[0] = 1 + (1 << width) ;
+      for (int row3=0; row3 < good; row3++)
+         theRow[gWork[row3]]++ ;
+      theRow[1<<width] = 0 ;
+      for (int row3=0; row3 < (1<<width); row3++)
+         theRow[row3+1] += theRow[row3] ;
+      for (int row3=good-1; row3>=0; row3--) {
+         int row4 = gWork[row3] ;
+         theRow[--theRow[row4]] = gWork2[row3] ;
+      }
+      unsigned int h = hashRow(theRow, 1+(1<<width)+good) ;
+      h &= (2 << (2 * width)) - 1 ;
+      while (1) {
+         if (rowHash[h] == -1) {
+            rowHash[h] = (row1 << width) + row2 ;
+            break ;
+         }
+         if (memcmp(theRow, gInd3[rowHash[h]], 2*(1+(1<<width)+good)) == 0) {             //Maybe two different row12s result in the exact same rows for the lookup table?
+            theRow = gInd3[rowHash[h]] ;                                                  //Fortunately, this means I don't have to do anything to fix for when two threads try to run makeRow on the same row12 combination
+            unbmalloc(1+(1<<width)+good) ;
+            break ;
+         }
+         h = (h + 1) & ((2 << (2 * width)) - 1) ;
+      }
+      
+      gInd3[(row1<<width)+row2] = theRow ;
+  }
+   
+/*
+ *   For debugging:
+ *
+   printf("R") ;
+   for (int i=0; i<1+(1<<width)+good; i++)
+      printf(" %d", theRow[i]) ;
+   printf("\n") ;
+   fflush(stdout) ;
+ */
+ 
+   return theRow ;
+}
+
+/*
+ *   We calculate the stats using a 2 * 64 << width array.  We use a
+ *   leading 1 to separate them.  Index 1 aaa bb cc dd represents
+ *   the count for a result of aaa when the last two bits of row1, row2,
+ *   and row3 were bb, cc, and dd, respectively.  We have to manage
+ *   the edge conditions appropriately.
+ */
+void genStatCounts() {
+   int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width) ;
+   for (int i=0; i<128<<width; i++)
+      cnt[i] = 0 ;
+   int s = 0 ;
+   if (params[P_SYMMETRY] == SYM_ODD)
+      s = 2 ;
+   else if (params[P_SYMMETRY] == SYM_EVEN)
+      s = 1 ;
+   else
+      s = width + 2 ;
+   // left side: never permit generation left of row4
+   for (int row1=0; row1<2; row1++)
+      for (int row2=0; row2<2; row2++)
+         for (int row3=0; row3<2; row3++)
+            if (evolveBit(row1, row2, row3) == 0)
+               cnt[(1<<6) + (row1 << 4) + (row2 << 2) + row3]++ ;
+   for (int nb=0; nb<width; nb++) {
+      for (int row1=0; row1<8; row1++)
+         for (int row2=0; row2<8; row2++)
+            for (int row3=0; row3<8; row3++) {
+               if (nb == width-1)
+                  if ((((row1 >> s) ^ row1) & 1) ||
+                      (((row2 >> s) ^ row2) & 1) ||
+                      (((row3 >> s) ^ row3) & 1))
+                     continue ;
+               int row4b = evolveBit(row1, row2, row3) ;
+               for (int row4=0; row4<1<<nb; row4++)
+                  cnt[(((((1<<nb) + row4) << 1) + row4b) << 6) +
+                    ((row1 & 3) << 4) + ((row2 & 3) << 2) + (row3 & 3)] +=
+                     cnt[(((1<<nb) + row4) << 6) +
+                       ((row1 >> 1) << 4) + ((row2 >> 1) << 2) + (row3 >> 1)] ;
+            }
+   }
+   // right side; check left, and accumulate into gcount
+   for (int row1=0; row1<4; row1++)
+      for (int row2=0; row2<4; row2++)
+         for (int row3=0; row3<4; row3++)
+            if (params[P_SYMMETRY] != SYM_ASYM ||
+                evolveBit(row1<<1, row2<<1, row3<<1) == 0)
+               for (int row4=0; row4<1<<width; row4++)
+                  gcount[row4] +=
+                     cnt[(((1<<width) + row4) << 6) +
+                       (row1 << 4) + (row2 << 2) + row3] ;
+   free(cnt) ;
 }
 
 void makePhases(){
@@ -377,13 +639,13 @@ void putRow(unsigned long rr, unsigned long r, int shift) {
   for (i = 0; i < 9; i++) if (rule & (1 << i)) putchar(i+'0');
 }*/
 
-void printRule() {
+/*void printRule() {
    int i;
    printf("B");
    for(i = 0; i < 9; i++) if(rule & (1 << i)) putchar(i+'0');
    printf("/S");
    for(i = 0; i < 9; i++) if(rule & (1 << (i+9))) putchar(i+'0');
-}
+}*/
 
 /*void printRule() {
    int i;
@@ -499,9 +761,9 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    }
    
    /* build data structure of rows so we can reduce width etc */
-   srows = malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
-   ssrows = malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
-   drows = srows; ddrows = ssrows; /* save orig ptr for free() */
+   srows = (unsigned long*)malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
+   ssrows = (unsigned long*)malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
+   drows = (unsigned long*)srows; ddrows = (unsigned long*)ssrows; /* save orig ptr for free() */
    for (i = 0; i <= nrows+MAXWIDTH; i++) srows[i]=ssrows[i]=0;
    for (i = nrows - 1; i >= 0; i--) {
       row r;
@@ -619,8 +881,8 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    oldnrows = nrows;
 
    /* output it all */
-   printf("\nx = %d, y = %d, rule = ", swidth - margin, nrows);
-   printRule();
+   printf("\nx = %d, y = %d, rule = %s", swidth - margin, nrows, rule);
+   //printRule();
    putchar('\n');
 
    while (nrows-- > 0) {
@@ -791,6 +1053,7 @@ void dumpState()
     dumpFlag = DUMPFAILURE;
     if (!(fp = openDumpFile())) return;
     fprintf(fp,"%lu\n",FILEVERSION);
+    fprintf(fp,"%s\n",rule);
     for (i = 0; i < NUM_PARAMS; i++)
         fprintf(fp,"%d\n",params[i]);
     fprintf(fp,"%d\n",width);
@@ -801,6 +1064,8 @@ void dumpState()
     //fprintf(fp,"%d\n",diagonal);
     //fprintf(fp,"%d\n",nFound);
     fprintf(fp,"%d\n",lastdeep);
+    fprintf(fp,"%d\n",cachemem);
+    fprintf(fp,"%lld\n",memlimit);
 
     fprintf(fp,"%u\n",qHead-qStart);
     fprintf(fp,"%u\n",qEnd-qStart);
@@ -1025,6 +1290,13 @@ unsigned int loadUInt(FILE *fp)
     return v;
 }
 
+long long int loadLLInt(FILE *fp)
+{
+    long long int v;
+    if (fscanf(fp,"%lld\n",&v) != 1) loadFail();
+    return v;
+}
+
 void loadState(char * cmd, char * file)
 {
     FILE * fp;
@@ -1038,30 +1310,40 @@ void loadState(char * cmd, char * file)
         printf("Incompatible file version\n");
         exit(1);
     }
-
+    
+    if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
+    rule = loadRule;
+    
+    if (parseRule(rule, nttable) != 0) {
+       fprintf(stderr, "Failed to parse rule %s\n", rule) ;
+       exit(10) ;
+    }
+    
     /* Load parameters and set stuff that can be derived from them */
     for (i = 0; i < NUM_PARAMS; i++)
         params[i] = loadInt(fp);
    // rule = (params[P_BIRTHS] << 9) + params[P_SURVIVES];
-   rule = params[P_RULE];
+   //rule = params[P_RULE];
 
     /* Load / initialise globals */
     width          = loadInt(fp);
     //widthReduction = loadInt(fp);
     period         = loadInt(fp);
     offset         = loadInt(fp);
-    mode           = loadInt(fp);
+    mode           = (Mode)(loadInt(fp));
     //diagonal       = loadInt(fp);
     //nFound         = loadInt(fp);
     lastdeep       = loadInt(fp);
+    cachemem       = loadInt(fp);
+    memlimit       = loadLLInt(fp);
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    //perdidor        = 0;
    aborting        = 0;
    nRowsInState = period+period;   /* how many rows needed to compute successor graph? */
 
     /* Allocate space for the data structures */
-   base = malloc((QSIZE>>BASEBITS)*sizeof(node));
-   rows = malloc(QSIZE*sizeof(row));
+   base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
+   rows = (row*)malloc(QSIZE*sizeof(row));
    if (base == 0 || rows == 0) {
       printf("Unable to allocate BFS queue!\n");
       exit(0);
@@ -1069,7 +1351,7 @@ void loadState(char * cmd, char * file)
    
    if (hashBits == 0) hash = 0;
    else {
-      hash = malloc(HASHSIZE*sizeof(node));
+      hash = (node*)malloc(HASHSIZE*sizeof(node));
       if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
    }
 
@@ -1116,95 +1398,114 @@ void loadState(char * cmd, char * file)
    omp_set_num_threads(params[P_NUMTHREADS]);
 }
 
+#ifndef NOCACHE
+int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
+   unsigned long long h = (unsigned long long)p1 +
+      17 * (unsigned long long)p2 + 257 * (unsigned long long)p3 +
+      513 * abn ;
+   h = h + (h >> 15) ;
+   h &= (cachesize-1) ;
+   struct cacheentry &ce = cache[omp_get_thread_num()][h] ;
+   if (ce.p1 == p1 && ce.p2 == p2 && ce.p3 == p3 && ce.abn == abn)
+      return -2 + ce.r ;
+   ce.p1 = p1 ;
+   ce.p2 = p2 ;
+   ce.p3 = p3 ;
+   ce.abn = abn ;
+   return h ;
+}
 
-
-
+void setkey(int h, int v) {
+   cache[omp_get_thread_num()][h].r = v ;
+}
+#endif
 
 int lookAhead(row *pRows, int a, int pPhase){
-   uint32_t ri11, ri12, ri13, ri22, ri23;  //indices: first number represents vertical offset, second number represents generational offset
-   uint32_t rowSet11, rowSet12, rowSet13, rowSet22, rowSet23, rowSet33;
-   uint32_t riStart11, riStart12, riStart13, riStart22, riStart23;
-   uint32_t numRows11, numRows12, numRows13, numRows22, numRows23;
-   uint32_t row11, row12, row13, row22, row23;
+// indices: first number represents vertical offset,
+//          second number represents generational offset
+   int ri11, ri12, ri13, ri22, ri23;
+   uint16_t *riStart11, *riStart12, *riStart13, *riStart22, *riStart23;
+   int numRows11, numRows12, numRows13, numRows22, numRows23;
+   int row11, row12, row13, row22, row23;
+   int k;
    
+   getoffsetcount(pRows[a - params[P_PERIOD] - fwdOff[pPhase]],
+                  pRows[a - fwdOff[pPhase]],
+                  pRows[a], riStart11, numRows11);
+   if (!numRows11)
+      return 0;
    
-   rowSet11 = (pRows[a - params[P_PERIOD] - fwdOff[pPhase]] << (2 * params[P_WIDTH]))
-             +(pRows[a - fwdOff[pPhase]] << params[P_WIDTH])
-             + pRows[a];
-   riStart11 = gInd[rowSet11];
-   numRows11 = gInd[rowSet11 + 1] - riStart11;
+   getoffsetcount(pRows[a - params[P_PERIOD] - doubleOff[pPhase]],
+                  pRows[a - doubleOff[pPhase]],
+                  pRows[a - fwdOff[pPhase]], riStart12, numRows12);
    
-   if(!numRows11) return 0;
-
-   rowSet12 = (pRows[a - params[P_PERIOD] - doubleOff[pPhase]] << (2 * params[P_WIDTH]))
-             +(pRows[a - doubleOff[pPhase]] << params[P_WIDTH])
-             + pRows[a - fwdOff[pPhase]];
-   riStart12 = gInd[rowSet12];
-   numRows12 = gInd[rowSet12 + 1] - riStart12;
-
    if(tripleOff[pPhase] >= params[P_PERIOD]){
-      //riStart13 = pInd[a + params[P_PERIOD] - tripleOff[pPhase]] + pRemain[a + params[P_PERIOD] - tripleOff[pPhase]];
+      riStart13 = pRows + (a + params[P_PERIOD] - tripleOff[pPhase]);
       numRows13 = 1;
+#ifndef NOCACHE
+      k = getkey(riStart11, riStart12, (uint16_t*)(gcount + riStart13[0]),
+         (pRows[a-doubleOff[pPhase]] << width) + pRows[a-tripleOff[pPhase]]);
+#endif
    }
    else{
-      rowSet13 = (pRows[a - params[P_PERIOD] - tripleOff[pPhase]] << (2 * params[P_WIDTH]))
-                +(pRows[a - tripleOff[pPhase]] << params[P_WIDTH])
-                + pRows[a - doubleOff[pPhase]];
-      riStart13 = gInd[rowSet13];
-      numRows13 = gInd[rowSet13 + 1] - riStart13;
+      getoffsetcount(pRows[a - params[P_PERIOD] - tripleOff[pPhase]],
+                     pRows[a - tripleOff[pPhase]],
+                     pRows[a - doubleOff[pPhase]], riStart13, numRows13);
+#ifndef NOCACHE
+      k = getkey(riStart11, riStart12, riStart13,
+         (pRows[a-doubleOff[pPhase]] << width) + pRows[a-tripleOff[pPhase]]);
+#endif
    }
-
+#ifndef NOCACHE
+   if (k < 0)
+      return k+2;
+#endif
+   
    for(ri11 = 0; ri11 < numRows11; ++ri11){
-      row11 = gRows[ri11 + riStart11];
+      row11 = riStart11[ri11];
       for(ri12 = 0; ri12 < numRows12; ++ri12){
-         row12 = gRows[ri12 + riStart12];
-         rowSet22 = (pRows[a - doubleOff[pPhase]] << (2 * params[P_WIDTH]))
-                   +(row12 << params[P_WIDTH])
-                   + row11;
-         riStart22 = gInd[rowSet22];
-         numRows22 = gInd[rowSet22 + 1] - riStart22;
+         row12 = riStart12[ri12];
+         getoffsetcount(pRows[a - doubleOff[pPhase]],
+                        row12, row11, riStart22, numRows22);
          if(!numRows22) continue;
-
+         
          for(ri13 = 0; ri13 < numRows13; ++ri13){
-            if(tripleOff[pPhase] >= params[P_PERIOD]){
-               row13 = pRows[a + params[P_PERIOD] - tripleOff[pPhase]];
-            }
-            else{
-               row13 = gRows[ri13 + riStart13];
-            }
-            rowSet23 = (pRows[a - tripleOff[pPhase]] << (2 * params[P_WIDTH]))
-                      +(row13 << params[P_WIDTH])
-                      + row12;
-            riStart23 = gInd[rowSet23];
-            numRows23 = gInd[rowSet23 + 1] - riStart23;
+            row13 = riStart13[ri13];
+            getoffsetcount(pRows[a - tripleOff[pPhase]],
+                           row13, row12, riStart23, numRows23);
             if(!numRows23) continue;
-
-            for(ri22 = 0; ri22 < numRows22; ++ri22){
-               row22 = gRows[ri22 + riStart22];
-               for(ri23 = 0; ri23 < numRows23; ++ri23){
-                  row23 = gRows[ri23 + riStart23];
-                  rowSet33 = (row13 << (2 * params[P_WIDTH]))
-                            +(row23 << params[P_WIDTH])
-                            + row22;
-                  if(gInd[rowSet33] != gInd[rowSet33 + 1]) return 1;
+            
+            for(ri23 = 0; ri23 < numRows23; ++ri23){
+               row23 = riStart23[ri23];
+               uint16_t *p = getoffset(row13, row23);
+               for(ri22 = 0; ri22 < numRows22; ++ri22){
+                  row22 = riStart22[ri22];
+                  if (p[row22+1]!=p[row22]) {
+#ifndef NOCACHE
+                     setkey(k, 1);
+#endif
+                     return 1;
+                  }
                }
             }
          }
       }
    }
+#ifndef NOCACHE
+   setkey(k, 0);
+#endif
    return 0;
 }
-
-
 
 void process(node theNode)
 {
    long long int i;
    int firstRow = 0;
-   uint32_t numRows;
+   int numRows;
    uint32_t newRowSet;
    node x = theNode;
    int pPhase = peekPhase(x);
+   row *riStart;
    row pRows[3*MAXPERIOD];
    int currRow = 2*period + pPhase + 1;
    for(i = currRow - 1; i >= 0; --i){
@@ -1215,18 +1516,23 @@ void process(node theNode)
    ++pPhase;
    if(pPhase == period) pPhase = 0;
 
-   newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
-              +(pRows[currRow - period] << params[P_WIDTH])
-              + pRows[currRow - period + backOff[pPhase]];
-   numRows = gInd[newRowSet + 1] - gInd[newRowSet];
-
+//   newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
+//              +(pRows[currRow - period] << params[P_WIDTH])
+//              + pRows[currRow - period + backOff[pPhase]];
+//   numRows = gInd[newRowSet + 1] - gInd[newRowSet];
+   
+   getoffsetcount(pRows[currRow - 2 * period],
+                     pRows[currRow - period],
+                     pRows[currRow - period + backOff[pPhase]],
+                     riStart, numRows) ;
 
    if(theNode == 0){
       firstRow = 1;
    }
-
+   
    for(i = firstRow; i < numRows; ++i){
-      pRows[currRow] = gRows[gInd[newRowSet] + i];
+      pRows[currRow] = riStart[i];
+//      pRows[currRow] = gRows[gInd[newRowSet] + i];
       if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow, pPhase)){
          enqueue(theNode, pRows[currRow]);
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
@@ -1235,7 +1541,7 @@ void process(node theNode)
    }
 }
 
-int depthFirst(node theNode, long howDeep, uint32_t *pInd, uint32_t *pRemain, row *pRows){
+int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *pRows){
 //   uint32_t *pInd;
 //   uint32_t *pRemain;
 
@@ -1265,13 +1571,21 @@ int depthFirst(node theNode, long howDeep, uint32_t *pInd, uint32_t *pRemain, ro
    ++pPhase;
    if(pPhase == period) pPhase = 0;
 
-   newRowSet = (pRows[currRow - 2 * period] << (2 * width))
-              |(pRows[currRow - period] << width)
-              | pRows[currRow - period + backOff[pPhase]];
+//   newRowSet = (pRows[currRow - 2 * period] << (2 * width))
+//              |(pRows[currRow - period] << width)
+//              | pRows[currRow - period + backOff[pPhase]];
+//
+//   pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
+//   pInd[currRow] = gInd[newRowSet + 1];
 
-   pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
-   pInd[currRow] = gInd[newRowSet + 1];
-
+   
+   getoffsetcount(pRows[currRow - 2 * period],
+                  pRows[currRow - period],
+                  pRows[currRow - period + backOff[pPhase]],
+                  pInd[currRow], pRemain[currRow]) ;
+   pInd[currRow] += pRemain[currRow];
+   
+   
    
    for(;;){
 
@@ -1289,7 +1603,8 @@ int depthFirst(node theNode, long howDeep, uint32_t *pInd, uint32_t *pRemain, ro
       }
       //--pRemain[currRow];
 
-      pRows[currRow] = gRows[pInd[currRow] - pRemain[currRow]];
+//      pRows[currRow] = gRows[pInd[currRow] - pRemain[currRow]];
+      pRows[currRow] = *(pInd[currRow] - pRemain[currRow]);
       --pRemain[currRow];
       if(!lookAhead(pRows, currRow, pPhase)) continue;
 
@@ -1316,11 +1631,18 @@ int depthFirst(node theNode, long howDeep, uint32_t *pInd, uint32_t *pRemain, ro
          
       }
 
-      newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
-                 +(pRows[currRow - period] << params[P_WIDTH])
-                 + pRows[currRow - period + backOff[pPhase]];
-      pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
-      pInd[currRow] = gInd[newRowSet + 1];
+      
+      getoffsetcount(pRows[currRow - 2 * period],
+                     pRows[currRow - period],
+                     pRows[currRow - period + backOff[pPhase]],
+                     pInd[currRow], pRemain[currRow]) ;
+      pInd[currRow] += pRemain[currRow];
+      
+//      newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
+//                 +(pRows[currRow - period] << params[P_WIDTH])
+//                 + pRows[currRow - period + backOff[pPhase]];
+//      pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
+//      pInd[currRow] = gInd[newRowSet + 1];
 
    }
 }
@@ -1356,14 +1678,14 @@ static void deepen(){
    #pragma omp parallel
    {
    node j;
-   uint32_t *pInd;
-   uint32_t *pRemain;
+   uint16_t **pInd;
+   int *pRemain;
    row *pRows;
    
    
-   pInd = malloc((long long)sizeof(*pInd) * (deepeningAmount + 4 * params[P_PERIOD]));
-   pRemain = malloc((long long)sizeof(*pRemain) * (deepeningAmount + 4 * params[P_PERIOD]));
-   pRows = malloc((long long)sizeof(*pRows) * (deepeningAmount + 4 * params[P_PERIOD]));
+   pInd = (uint16_t**)malloc((long long)sizeof(*pInd) * (deepeningAmount + 4 * params[P_PERIOD]));
+   pRemain = (int*)malloc((long long)sizeof(*pRemain) * (deepeningAmount + 4 * params[P_PERIOD]));
+   pRows = (row*)malloc((long long)sizeof(*pRows) * (deepeningAmount + 4 * params[P_PERIOD]));
    
    #pragma omp for schedule(dynamic, CHUNK_SIZE)
    for (j = qHead; j < qTail; j++) {
@@ -1437,9 +1759,9 @@ int gcd(int a, int b) {
 }
 
 void echoParams(){
-   printf("Rule: ");
-   printRule();
-   printf("\n");
+   printf("Rule: %s\n",rule);
+//   printRule();
+//   printf("\n");
    printf("Period: %d\n",params[P_PERIOD]);
    printf("Offset: %d\n",params[P_OFFSET]);
    printf("Width:  %d\n",params[P_WIDTH]);
@@ -1533,15 +1855,10 @@ void loadInitRows(char * file){
 int main(int argc, char *argv[]){
    printf("%s\n",BANNER);
    
-   params[P_RULE] = 6152;         //first 9 bits represent births; next 9 bits represent survivals
    params[P_WIDTH] = 0;
    params[P_PERIOD] = 0;
    params[P_OFFSET] = 0;
    params[P_SYMMETRY] = 0;
-   params[P_INIT_ROWS] = 0;
-   //params[P_FULL_PERIOD] = 0;
-   params[P_NUM_SHIPS] = 1;
-   //params[P_FULL_WIDTH] = 0;
    params[P_REORDER] = 1;
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
@@ -1549,9 +1866,9 @@ int main(int argc, char *argv[]){
    params[P_NUMTHREADS] = 1;
    params[P_INIT_ROWS] = 0;
    params[P_MINDEEP] = 0;
-
+   
    int loadDumpFlag = 0;
-
+   const char *err ;
 
    //int dumpandexit = 0;
    int skipNext = 0;
@@ -1561,6 +1878,7 @@ int main(int argc, char *argv[]){
       usage();
       return 0;
    }
+   parseRule(rule, nttable) ; // pick up default rule
    if(argc == 3 && (!strcmp(argv[1],"s") || !strcmp(argv[1],"S") || !strcmp(argv[1],"p") || !strcmp(argv[1],"P"))) loadDumpFlag = 1;
    else{
       for(s = 1; s < argc; s++){    //read input parameters
@@ -1570,14 +1888,11 @@ int main(int argc, char *argv[]){
          }
          switch(argv[s][0]){
             case 'b': case 'B':     //read rule
-               params[P_RULE] = 0;
-               int sshift = 0;
-               int i;
-               for(i = 1; i < 100; i++){
-                  int rnum = argv[s][i];
-                  if(!rnum)break;
-                  if(rnum == 's' || rnum == 'S')sshift = 9;
-                  if(rnum >= '0' && rnum <= '8')params[P_RULE] += 1 << (sshift + rnum - '0');
+               rule = argv[s] ;
+               err = parseRule(argv[s], nttable) ;
+               if (err != 0) {
+                  fprintf(stderr, "Failed to parse rule %s\n", argv[s]) ;
+                  exit(10) ;
                }
             break;
             case 'w': case 'W': sscanf(&argv[s][1], "%d", &params[P_WIDTH]); break;
@@ -1591,31 +1906,27 @@ int main(int argc, char *argv[]){
             //case 'j': case 'J': dumpandexit = 1; break;
             case 'e': case 'E': params[P_INIT_ROWS] = s + 1; skipNext = 1; break;
             case 'm': case 'M': sscanf(&argv[s][1], "%d", &params[P_MINDEEP]); break;
-            //case 'f': case 'F': sscanf(&argv[s][1], "%d", &params[P_FULL_PERIOD]); break;
-            case 's': case 'S': sscanf(&argv[s][1], "%d", &params[P_NUM_SHIPS]); break;
             case 't': case 'T': sscanf(&argv[s][1], "%d", &params[P_NUMTHREADS]); break;
             case 'o': case 'O': params[P_REORDER] = 0; break;
             case 'q': case 'Q': sscanf(&argv[s][1], "%d", &params[P_QBITS]); break;
             case 'h': case 'H': sscanf(&argv[s][1], "%d", &params[P_HASHBITS]); break;
             case 'i': case 'I': sscanf(&argv[s][1], "%d", &params[P_BASEBITS]); break;
+            case 'R': sscanf(&argv[s][1], "%lld", &memlimit) ; memlimit <<= 20 ; break ;
+            case 'C': sscanf(&argv[s][1], "%d", &cachemem); break ;
          }
       }
    }
-
-   
-   
    
    if(loadDumpFlag) loadState(argv[1],argv[2]);
    else{
-      
+            
       width = params[P_WIDTH];
       period = params[P_PERIOD];
       offset = params[P_OFFSET];
       deepeningAmount = period;
       lastdeep = 0;
       hashPhase = (gcd(period,offset)>1);
-   
-      rule = params[P_RULE];
+      
    
       nRowsInState = period+period;
    
@@ -1625,8 +1936,8 @@ int main(int argc, char *argv[]){
       //   mode = asymmetric;
       //}
    
-      base = malloc((QSIZE>>BASEBITS)*sizeof(node));
-      rows = malloc(QSIZE*sizeof(row));
+      base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
+      rows = (row*)malloc(QSIZE*sizeof(row));
       if (base == 0 || rows == 0) {
          printf("Unable to allocate BFS queue!\n");
          exit(0);
@@ -1634,7 +1945,7 @@ int main(int argc, char *argv[]){
    
       if (hashBits == 0) hash = 0;
       else {
-         hash = malloc(HASHSIZE*sizeof(node));
+         hash = (node*)malloc(HASHSIZE*sizeof(node));
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
       
@@ -1647,25 +1958,34 @@ int main(int argc, char *argv[]){
    
    echoParams();
    
+#ifndef NOCACHE
+   cachesize = 32768 ;
+   while (cachesize * sizeof(cacheentry) < 550000 * cachemem)
+      cachesize <<= 1 ;
+   memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
+   if(memusage > memlimit){
+      printf("Not enough memory to allocate lookahead cache\n");
+      exit(0);
+   }
+   totalCache = (struct cacheentry *)calloc(sizeof(cacheentry),
+         (cachesize + 5) * params[P_NUMTHREADS]) ;
+   cache = (struct cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
+   
+   for(int i = 0; i < params[P_NUMTHREADS]; i++)
+      cache[i] = totalCache + (cachesize + 5) * i;
+#endif
+   
    makePhases();
+   fasterTable();
    makeTables();
-
-   //enqueue(0,0);
+   
    rephase();
 
-
-   /*printRule();
-   printf("\nperiod: %d\n",period);
-   printf("width: %d\n",width);
-   printf("offset: %d\n",offset);
-   printf("Symmetry: %d\n\n",params[P_SYMMETRY]);*/
-   //printf("Hash bits: %d\n\n",hashBits);
-
-
    printf("Starting search\n");
+   fflush(stdout);
    
    breadthFirst();
-
+   
    printf("Search complete.\n");
 
    return 0;
