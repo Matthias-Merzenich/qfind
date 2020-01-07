@@ -1,4 +1,4 @@
-/* qfind v1.0.1
+/* qfind v1.1
 ** A spaceship search program by Matthias Merzenich.
 ** Based on code by David Eppstein, "zdr", Paul Tooke, Tomas Rokicki,.
 ** Thanks to Aidan F. Pierce, and Adam P. Goucher for code and suggestions.
@@ -22,6 +22,8 @@
 ** 1.0.1, 7 January 2020
 **    Clean up code
 **    Make memlimit and cachemem into proper parameters
+** 1.1, 7 January 2020
+**    Add option to disable output during deepening step
 */
 
 #include <stdio.h>
@@ -55,12 +57,13 @@
 #define P_HASHBITS 8 
 #define P_DEPTHLIMIT 9 
 #define P_NUMTHREADS 10
-#define P_INIT_ROWS 11
+#define P_INITROWS 11
 #define P_MINDEEP 12
 #define P_MEMLIMIT 13
 #define P_CACHEMEM 14
+#define P_PRINTDEEP 15
 
-#define NUM_PARAMS 15
+#define NUM_PARAMS 16
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -667,12 +670,6 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    int nDeepRows = 0;
    int nodeDiff;
 
-   /* check if output disabled while deepening */
-   /*if (perdidor) {
-      perdidor = 2;
-      return;
-   }*/
-
    if(pRows != NULL){
       while(pRows[currRow] == 0){
          if(currRow == 0){
@@ -740,7 +737,6 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
             b = PARENT(b);
          }
       }
-      //row rx;
       switch(mode) {
          case asymmetric:
             srows[i] = r;
@@ -1274,7 +1270,6 @@ void loadState(char * cmd, char * file)
    lastdeep       = loadInt(fp);
    
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
-   //perdidor        = 0;
    aborting        = 0;
    nRowsInState = period+period;   /* how many rows needed to compute successor graph? */
 
@@ -1514,6 +1509,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       /* Check if we reached the desired depth. If so,  
          check if the result is a complete spaceship */
       if(currRow > startRow + howDeep){
+         if(params[P_PRINTDEEP] == 0) return 1;
          for(i = 1; i <= period; ++i){
             if(pRows[currRow - i]) return 1;
          }
@@ -1542,9 +1538,6 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
 
 static void deepen(){
    node i;
-   //node j;
-
-//   if (findLimit > 1) perdidor = 1;   /* disable success if want mult pattern output */
 
    /* compute amount to deepen, apply reduction if too deep */
 #ifdef PATCH07
@@ -1593,7 +1586,6 @@ static void deepen(){
    /* before reporting new queue size, shrink tree back down */
    printf(" -> ");
    fflush(stdout);
-   //perdidor = 0;
    
    /* signal time for dump */
    if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;\
@@ -1657,10 +1649,11 @@ void echoParams(){
    else if(params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
    else if(params[P_SYMMETRY] == SYM_GUTTER) printf("Symmetry: gutter\n");
    if(params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
-   if(!params[P_REORDER]) printf("Use naive search order.\n");
+   if(!params[P_REORDER]) printf("Use naive search order\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
    printf("Minimum deepening increment: %d\n",MINDEEP);
+   if(params[P_PRINTDEEP] == 0)printf("Output disabled while deepening\n");
 #ifndef NOCACHE
    printf("Cache memory per thread: %d megabytes\n", params[P_CACHEMEM]);
 #endif
@@ -1692,6 +1685,7 @@ void usage(){
    printf("  g    searches for symmetric spaceships with gutters (empty center column)\n");
    printf("\n");
    printf("  tNN  runs search using NN threads during deepening step (default: 1)\n");
+   printf("  mNN  sets minimum deepening increment to NN (default: period)\n");
    printf("  hNN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("       Use h0 to disable duplicate elimination.\n");
    printf("  qNN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
@@ -1701,10 +1695,10 @@ void usage(){
 #endif
    printf("  rNN  limits memory usage to NN megabytes (default: no limit)\n");
    printf("\n");
-   printf("  mNN  sets minimum deepening increment to NN (default: period)\n");
-   printf("\n");
    printf("  d    dumps the search state after each queue compaction\n");
    //printf("  j    dumps the state at start of search\n");
+   printf("  x    disables output during deepening step\n");
+   printf("       (useful for searches that find many spaceships)\n");
    printf("\n");
    printf("  o    uses naive search order (not recommended)\n");
    printf("\n");
@@ -1759,10 +1753,11 @@ int main(int argc, char *argv[]){
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
-   params[P_INIT_ROWS] = 0;
+   params[P_INITROWS] = 0;
    params[P_MINDEEP] = 0;
    params[P_CACHEMEM] = 32;
    params[P_MEMLIMIT] = -1;
+   params[P_PRINTDEEP] = 1;
    
    int loadDumpFlag = 0;
    const char *err ;
@@ -1795,7 +1790,7 @@ int main(int argc, char *argv[]){
             case 'g': case 'G': params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
             case 'd': case 'D': params[P_CHECKPOINT] = 1; break;
             //case 'j': case 'J': dumpandexit = 1; break;
-            case 'e': case 'E': params[P_INIT_ROWS] = ++s; break;
+            case 'e': case 'E': params[P_INITROWS] = ++s; break;
             case 'm': case 'M': sscanf(&argv[s][1], "%d", &params[P_MINDEEP]); break;
             case 't': case 'T': sscanf(&argv[s][1], "%d", &params[P_NUMTHREADS]); break;
             case 'o': case 'O': params[P_REORDER] = 0; break;
@@ -1804,6 +1799,7 @@ int main(int argc, char *argv[]){
             case 'i': case 'I': sscanf(&argv[s][1], "%d", &params[P_BASEBITS]); break;
             case 'c': case 'C': sscanf(&argv[s][1], "%d", &params[P_CACHEMEM]); break;
             case 'r': case 'R': sscanf(&argv[s][1], "%d", &params[P_MEMLIMIT]); break;
+            case 'x': case 'X': params[P_PRINTDEEP] = 0; break;
             default:
                printf("Unrecognized option %s\n", argv[s]) ;
                exit(10);
@@ -1841,7 +1837,7 @@ int main(int argc, char *argv[]){
       
       enqueue(0,0);
       
-      if(params[P_INIT_ROWS]) loadInitRows(argv[params[P_INIT_ROWS]]);
+      if(params[P_INITROWS]) loadInitRows(argv[params[P_INITROWS]]);
    }
    
    memlimit = ((long long)params[P_MEMLIMIT]) << 20;
