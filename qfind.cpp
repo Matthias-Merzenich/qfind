@@ -36,8 +36,8 @@
 
 //#define NOCACHE
 
-#define BANNER "qfind v1.0.1 by Matthias Merzenich, 7 January 2020"
-#define FILEVERSION ((unsigned long) 2020010701)  /* yyyymmddnn */
+#define BANNER "qfind v1.1 by Matthias Merzenich, 7 January 2020"
+#define FILEVERSION ((unsigned long) 2020010702)  /* yyyymmddnn */
 
 #define CHUNK_SIZE 64
 
