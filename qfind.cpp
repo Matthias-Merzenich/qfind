@@ -1,8 +1,7 @@
 /* qfind v1.0
 ** A spaceship search program by Matthias Merzenich
 ** Based on code by David Eppstein, Paul Tooke, and "zdr"
-** This is a first attempt at combining gfind and zfind.
-** The code is currently a mess, but I hope to improve it over time.
+** This is an attempt at combining the functionality of gfind and zfind.
 */
 
 #include <stdio.h>
@@ -16,7 +15,7 @@
 //#define NOCACHE
 
 #define BANNER "qfind v1.0 by Matthias Merzenich, 3 January 2019"
-#define FILEVERSION ((unsigned long) 2019010301)  //yyyymmddnn
+#define FILEVERSION ((unsigned long) 2019010301)  /* yyyymmddnn */
 
 #define CHUNK_SIZE 64
 
@@ -24,7 +23,6 @@
 
 #define HASHBITS 21
 #define DEFAULT_DEPTHLIMIT (qBits-3)
-//#define SEARCHLIMIT 50
 
 #define P_WIDTH 0
 #define P_PERIOD 1
@@ -48,10 +46,7 @@
 #define SYM_GUTTER 4
 
 const char *rule = "B3/S23";
-char loadRule[256]; //used for loading rule from file
-
-
-//int bc[8] = {0, 1, 1, 2, 1, 2, 2, 3};
+char loadRule[256]; /* used for loading rule from file */
 
 int params[NUM_PARAMS];
 int width;
@@ -66,7 +61,6 @@ int period;
 int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
 
 int offset;
-//unsigned long rule;
 
 int aborting;
 int nFound;
@@ -96,10 +90,10 @@ int nttable[512] ;
 uint16_t **gInd3 ;
 uint32_t *gcount ;
 uint16_t *gRows;
-long long memusage ;
+long long memusage = 0;
 long long memlimit = 0x7000000000000000LL ;
 
-int cachemem = 32 ; // megabytes for the cache
+int cachemem = 32 ; /* number of megabytes for the cache */
 #ifndef NOCACHE
 long long cachesize ;
 struct cacheentry {
@@ -287,42 +281,30 @@ int getcount(int row1, int row2, int row3) {
    uint16_t *theRow = getoffset(row1, row2) ;
    return theRow[row3+1] - theRow[row3] ;
 }
-int *gWorkConcat ;      //gWork replaced with gWorkConcat to be parceled out between threads.
+int *gWorkConcat ;      /* gWorkConcat to be parceled out between threads */
 int *rowHash ;
 uint16_t *valorder ;
 void genStatCounts() ;
 void makeTables() {
-   
-   causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth) << width);
-   
-   
+   causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth)<<width);
    gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2))) ;
    rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2))) ;
    for (int i=0; i<1<<(2*width); i++)
       gInd3[i] = 0 ;
    for (int i=0; i<2<<(2*width); i++)
       rowHash[i] = -1 ;
-// ev2Rows = (uint16_t *)calloc(sizeof(*ev2Rows), (1LL << (width * 2)));          ev2Rows is not needed for qfind
    gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
-// memusage += (sizeof(*gInd3)+sizeof(*ev2Rows)+2*sizeof(int)) << (width*2) ;
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2) ;
    uint32_t i;
    for(i = 0; i < 1 << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
    for(i = 0; i < 1 << width; ++i) gcount[i] = 0 ;
-// for (int i=0; i<1<<(2*width); i++)
-//    ev2Rows[i] = 0 ;
-   gWorkConcat = (int *)calloc(sizeof(int), (3LL * params[P_NUMTHREADS]) << width);
+   gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
    if (params[P_REORDER] == 1)
       genStatCounts() ;
-//   if (params[P_REORDER] == 2) {                           random order doesn't make much sense for a breadth-first search
-//      std::mt19937 mt_rand(time(0));
-//      for (int i=1; i<1<<width; i++)
-//         gcount[i] = 1 + (mt_rand() & 0x3fffffff) ;
-//   }
-   if (params[P_REORDER] == 3)
+   if (params[P_REORDER] == 2)
       for (int i=1; i<1<<width; i++)
          gcount[i] = 1 + gcount[i & (i - 1)] ;
-   gcount[0] = 0xffffffff;  //Maximum possible value
+   gcount[0] = 0xffffffff;  /* Maximum value so empty row is chosen first */
    valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width) ;
    for (int i=0; i<1<<width; i++)
       valorder[i] = (1<<width)-1-i ;
@@ -333,8 +315,8 @@ void makeTables() {
 }
 uint16_t *bbuf ;
 int bbuf_left = 0 ;
-// reduce fragmentation by allocating chunks larger than needed and
-// parceling out the small pieces.
+/* reduce fragmentation by allocating chunks larger than needed and */
+/* parceling out the small pieces.                                  */
 uint16_t *bmalloc(int siz) {
    if (siz > bbuf_left) {
       bbuf_left = 1 << (2 * width) ;
@@ -363,7 +345,8 @@ unsigned int hashRow(uint16_t *theRow, int siz) {
 
 uint16_t *makeRow(int row1, int row2) {
    int good = 0 ;
-   int *gWork = gWorkConcat + ((3LL * omp_get_thread_num()) << width);      //Set up gWork for this particular thread
+   /* Set up gWork for this particular thread */
+   int *gWork = gWorkConcat + ((3LL * omp_get_thread_num()) << width);
    int *gWork2 = gWork + (1 << width) ;
    int *gWork3 = gWork2 + (1 << width) ;
    if (width < 4) {
@@ -385,24 +368,15 @@ uint16_t *makeRow(int row1, int row2) {
    }
    for (int row3i = 0; row3i < 1<<width; row3i++) {
       int row3 = valorder[row3i] ;
-//      int row23 = (row2 << width) + row3 ;
       int row4 = gWork3[row3] ;
       if (row4 < 0)
          continue ;
-//      if (row1 == 0)
-//         ev2Rows[row23] = row4 ;
       gWork2[good] = row3 ;
       gWork[good++] = row4 ;
    }
    
-// bmalloc, unbmalloc, and all operations that read or write to row, rowHash,
-// and gInd3 must be included in a critical region.
-// 
-// It might be better to allocate some memory to calculate the values in the
-// row array, and then transfer them after mutex is given and bmalloc is called.
-// Alternatively, perhaps each thread can have its own bmalloc buffer.
-// I'm just doing the most naive thing for now and giving the mutex here.
-
+   /* bmalloc, unbmalloc, and all operations that read or write to row, */
+   /* rowHash, and gInd3 must be included in a critical region.         */
    uint16_t *theRow;
   #pragma omp critical(updateTable)
   {
@@ -426,8 +400,11 @@ uint16_t *makeRow(int row1, int row2) {
             rowHash[h] = (row1 << width) + row2 ;
             break ;
          }
-         if (memcmp(theRow, gInd3[rowHash[h]], 2*(1+(1<<width)+good)) == 0) {             //Maybe two different row12s result in the exact same rows for the lookup table?
-            theRow = gInd3[rowHash[h]] ;                                                  //Fortunately, this means I don't have to do anything to fix for when two threads try to run makeRow on the same row12 combination
+         /* Maybe two different row12s result in the exact same rows for the */
+         /* lookup table. This prevents two different threads from trying to */
+         /* build the same part of the lookup table.                         */
+         if (memcmp(theRow, gInd3[rowHash[h]], 2*(1+(1<<width)+good)) == 0) {
+            theRow = gInd3[rowHash[h]] ;
             unbmalloc(1+(1<<width)+good) ;
             break ;
          }
@@ -451,12 +428,12 @@ uint16_t *makeRow(int row1, int row2) {
 }
 
 /*
- *   We calculate the stats using a 2 * 64 << width array.  We use a
- *   leading 1 to separate them.  Index 1 aaa bb cc dd represents
- *   the count for a result of aaa when the last two bits of row1, row2,
- *   and row3 were bb, cc, and dd, respectively.  We have to manage
- *   the edge conditions appropriately.
- */
+**   We calculate the stats using a 2 * 64 << width array.  We use a
+**   leading 1 to separate them.  Index 1 aaa bb cc dd represents
+**   the count for a result of aaa when the last two bits of row1, row2,
+**   and row3 were bb, cc, and dd, respectively.  We have to manage
+**   the edge conditions appropriately.
+*/
 void genStatCounts() {
    int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width) ;
    for (int i=0; i<128<<width; i++)
@@ -468,7 +445,7 @@ void genStatCounts() {
       s = 1 ;
    else
       s = width + 2 ;
-   // left side: never permit generation left of row4
+   /* left side: never permit generation left of row4 */
    for (int row1=0; row1<2; row1++)
       for (int row2=0; row2<2; row2++)
          for (int row3=0; row3<2; row3++)
@@ -491,7 +468,7 @@ void genStatCounts() {
                        ((row1 >> 1) << 4) + ((row2 >> 1) << 2) + (row3 >> 1)] ;
             }
    }
-   // right side; check left, and accumulate into gcount
+   /* right side; check left, and accumulate into gcount */
    for (int row1=0; row1<4; row1++)
       for (int row2=0; row2<4; row2++)
          for (int row3=0; row3<4; row3++)
@@ -566,7 +543,6 @@ static inline int same(node p, node q, row r) {
 }
 
 /* test if we've seen this child before */
-//void success(node);
 static inline int isVisited(node b, row r) {
    if (same(0,b,r)) return 1;
    if (hash != 0) {
@@ -631,35 +607,6 @@ void putRow(unsigned long rr, unsigned long r, int shift) {
    sendRLE('$');
 }
 
-/*void printRule() {
-  int i;
-  printf("B");
-  for (i = 0; i < 9; i++) if (rule & (1 << (9+i))) putchar(i+'0');
-  printf("/S");
-  for (i = 0; i < 9; i++) if (rule & (1 << i)) putchar(i+'0');
-}*/
-
-/*void printRule() {
-   int i;
-   printf("B");
-   for(i = 0; i < 9; i++) if(rule & (1 << i)) putchar(i+'0');
-   printf("/S");
-   for(i = 0; i < 9; i++) if(rule & (1 << (i+9))) putchar(i+'0');
-}*/
-
-/*void printRule() {
-   int i;
-   printf("B");
-   for(i = 0; i < 9; i++){
-      if(rule & (1 << i)) printf("%d",i);
-   }
-   printf("/S");
-   for(i = 9; i < 18; i++){
-      if(rule & (1 << i)) printf("%d",i - 9);
-   }
-}*/
-
-
 int modeWidth() {
    switch(mode) {
       case asymmetric:
@@ -674,12 +621,7 @@ int modeWidth() {
    return 0;
 }
 
-/* PATCH - Keep static array for output to prevent memory leak */
-//int sxsAllocRows =  0;
-//unsigned long *  sxsAllocData;
-//unsigned long *  sxsAllocData2;
-
-/* PATCH - Avoid Intel shift bug */
+/* Avoid Intel shift bug */
 static inline unsigned long
 safeShift(unsigned long r, int i)
 {
@@ -695,7 +637,6 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    int skewAmount = 0;
    int swidth;
    int p, i, j, margin;
-   //row *srows, *ssrows, *drows, *ddrows;
    unsigned long *srows, *ssrows, *drows, *ddrows;
    static unsigned long *oldsrows = 0, *oldssrows = 0;
    static unsigned long *olddrows = 0, *oldddrows = 0;
@@ -882,7 +823,6 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
 
    /* output it all */
    printf("\nx = %d, y = %d, rule = %s", swidth - margin, nrows, rule);
-   //printRule();
    putchar('\n');
 
    while (nrows-- > 0) {
@@ -1057,12 +997,9 @@ void dumpState()
     for (i = 0; i < NUM_PARAMS; i++)
         fprintf(fp,"%d\n",params[i]);
     fprintf(fp,"%d\n",width);
-    //fprintf(fp,"%d\n",widthReduction);
     fprintf(fp,"%d\n",period);
     fprintf(fp,"%d\n",offset);
     fprintf(fp,"%d\n",mode);
-    //fprintf(fp,"%d\n",diagonal);
-    //fprintf(fp,"%d\n",nFound);
     fprintf(fp,"%d\n",lastdeep);
     fprintf(fp,"%d\n",cachemem);
     fprintf(fp,"%lld\n",memlimit);
@@ -1116,11 +1053,11 @@ long currentDepth() {
 
 
 /*
-   doCompact() now has two parts.  The first part compresses
-   the queue.  The second part consists of the last loop which
-   converts parent bits to back parent pointers. The search
-   state may be saved in between.  The queue dimensions, which
-   were previously saved in local variables are saved in globals.
+** doCompact() now has two parts.  The first part compresses
+** the queue.  The second part consists of the last loop which
+** converts parent bits to back parent pointers. The search
+** state may be saved in between.  The queue dimensions, which
+** were previously saved in local variables are saved in globals.
 */
 
 void doCompactPart1()
@@ -1235,13 +1172,7 @@ static void preview(int allPhases)
     for (i = qHead; (i<qTail) && EMPTY(i); i++);
     for (j = qTail-1; (j>i) && EMPTY(j); j--);
     if (j<i) return;
-/*
-    for (ph = 0; ph < period; ph++)
-    {
-        i=PARENT(i);
-        j=PARENT(j);
-    }
-*/
+    
     while (j>=i && !aborting)
     {
         if (!EMPTY(j))
@@ -1299,43 +1230,38 @@ long long int loadLLInt(FILE *fp)
 
 void loadState(char * cmd, char * file)
 {
-    FILE * fp;
-    int i;
+   FILE * fp;
+   int i;
 
-    loadFile = file;
-    fp = fopen(loadFile, "r");
-    if (!fp) loadFail();
-    if (loadUInt(fp) != FILEVERSION)
-    {
-        printf("Incompatible file version\n");
-        exit(1);
-    }
-    
-    if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
-    rule = loadRule;
-    
-    if (parseRule(rule, nttable) != 0) {
-       fprintf(stderr, "Failed to parse rule %s\n", rule) ;
-       exit(10) ;
-    }
-    
-    /* Load parameters and set stuff that can be derived from them */
-    for (i = 0; i < NUM_PARAMS; i++)
-        params[i] = loadInt(fp);
-   // rule = (params[P_BIRTHS] << 9) + params[P_SURVIVES];
-   //rule = params[P_RULE];
+   loadFile = file;
+   fp = fopen(loadFile, "r");
+   if (!fp) loadFail();
+   if (loadUInt(fp) != FILEVERSION)
+   {
+       printf("Incompatible file version\n");
+       exit(1);
+   }
+   
+   if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
+   rule = loadRule;
+   
+   if (parseRule(rule, nttable) != 0) {
+      fprintf(stderr, "Failed to parse rule %s\n", rule) ;
+      exit(10) ;
+   }
+   
+   /* Load parameters and set stuff that can be derived from them */
+   for (i = 0; i < NUM_PARAMS; i++)
+       params[i] = loadInt(fp);
 
-    /* Load / initialise globals */
-    width          = loadInt(fp);
-    //widthReduction = loadInt(fp);
-    period         = loadInt(fp);
-    offset         = loadInt(fp);
-    mode           = (Mode)(loadInt(fp));
-    //diagonal       = loadInt(fp);
-    //nFound         = loadInt(fp);
-    lastdeep       = loadInt(fp);
-    cachemem       = loadInt(fp);
-    memlimit       = loadLLInt(fp);
+   /* Load / initialise globals */
+   width          = loadInt(fp);
+   period         = loadInt(fp);
+   offset         = loadInt(fp);
+   mode           = (Mode)(loadInt(fp));
+   lastdeep       = loadInt(fp);
+   cachemem       = loadInt(fp);
+   memlimit       = loadLLInt(fp);
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    //perdidor        = 0;
    aborting        = 0;
@@ -1354,11 +1280,6 @@ void loadState(char * cmd, char * file)
       hash = (node*)malloc(HASHSIZE*sizeof(node));
       if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
    }
-
-    /* Various bits that need doing before we load the BFS queue */
-   // makeReversals();
-   //makeUnterm();
-   // set4x();
    
     /* Load up BFS queue and complete compaction */
     qHead  = loadUInt(fp);
@@ -1515,11 +1436,6 @@ void process(node theNode)
 
    ++pPhase;
    if(pPhase == period) pPhase = 0;
-
-//   newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
-//              +(pRows[currRow - period] << params[P_WIDTH])
-//              + pRows[currRow - period + backOff[pPhase]];
-//   numRows = gInd[newRowSet + 1] - gInd[newRowSet];
    
    getoffsetcount(pRows[currRow - 2 * period],
                      pRows[currRow - period],
@@ -1532,7 +1448,6 @@ void process(node theNode)
    
    for(i = firstRow; i < numRows; ++i){
       pRows[currRow] = riStart[i];
-//      pRows[currRow] = gRows[gInd[newRowSet] + i];
       if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow, pPhase)){
          enqueue(theNode, pRows[currRow]);
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
@@ -1542,21 +1457,8 @@ void process(node theNode)
 }
 
 int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *pRows){
-//   uint32_t *pInd;
-//   uint32_t *pRemain;
-
    int pPhase;
-//   row *pRows;
-
-   uint32_t newRowSet;
    pPhase = peekPhase(theNode);
-
-
-
-
-//   pInd = malloc((long long)sizeof(*pInd) * (howDeep + 3 * params[P_PERIOD]));
-//   pRemain = malloc((long long)sizeof(*pRemain) * (howDeep + 3 * params[P_PERIOD]));
-//   pRows = malloc((long long)sizeof(*pRows) * (howDeep + 3 * params[P_PERIOD]));
 
    node x = theNode;
    uint32_t startRow = 2*period + pPhase + 1;
@@ -1570,14 +1472,6 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
 
    ++pPhase;
    if(pPhase == period) pPhase = 0;
-
-//   newRowSet = (pRows[currRow - 2 * period] << (2 * width))
-//              |(pRows[currRow - period] << width)
-//              | pRows[currRow - period + backOff[pPhase]];
-//
-//   pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
-//   pInd[currRow] = gInd[newRowSet + 1];
-
    
    getoffsetcount(pRows[currRow - 2 * period],
                   pRows[currRow - period],
@@ -1589,21 +1483,16 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
    
    for(;;){
 
+      /* back up if there are no rows left to check at this depth */
       if(!pRemain[currRow]){
          --currRow;
          if(pPhase == 0) pPhase = period;
          --pPhase;
-         if(currRow < startRow){
-//            free(pInd);
-//            free(pRemain);
-//            free(pRows);
+         if(currRow < startRow)
             return 0;
-         }
+         
          continue;
       }
-      //--pRemain[currRow];
-
-//      pRows[currRow] = gRows[pInd[currRow] - pRemain[currRow]];
       pRows[currRow] = *(pInd[currRow] - pRemain[currRow]);
       --pRemain[currRow];
       if(!lookAhead(pRows, currRow, pPhase)) continue;
@@ -1611,10 +1500,9 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       ++currRow;
       ++pPhase;
       if(pPhase == period) pPhase = 0;
+      /* Check if we reached the desired depth. If so,  
+         check if the result is a complete spaceship */
       if(currRow > startRow + howDeep){
-//         free(pInd);
-//         free(pRemain);
-//         free(pRows);
          for(i = 1; i <= period; ++i){
             if(pRows[currRow - i]) return 1;
          }
@@ -1622,6 +1510,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
          for(i = 1; i<= period; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
+         /* If we got here then we found a spaceship! */
          #pragma omp critical(printWhileDeepening)
          {
             success(theNode, pRows, startRow - 1, currRow + period - 1);
@@ -1630,20 +1519,12 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
          return 1;
          
       }
-
       
       getoffsetcount(pRows[currRow - 2 * period],
                      pRows[currRow - period],
                      pRows[currRow - period + backOff[pPhase]],
                      pInd[currRow], pRemain[currRow]) ;
       pInd[currRow] += pRemain[currRow];
-      
-//      newRowSet = (pRows[currRow - 2 * period] << (2 * params[P_WIDTH]))
-//                 +(pRows[currRow - period] << params[P_WIDTH])
-//                 + pRows[currRow - period + backOff[pPhase]];
-//      pRemain[currRow] = gInd[newRowSet + 1] - gInd[newRowSet];
-//      pInd[currRow] = gInd[newRowSet + 1];
-
    }
 }
 
@@ -1682,7 +1563,6 @@ static void deepen(){
    int *pRemain;
    row *pRows;
    
-   
    pInd = (uint16_t**)malloc((long long)sizeof(*pInd) * (deepeningAmount + 4 * params[P_PERIOD]));
    pRemain = (int*)malloc((long long)sizeof(*pRemain) * (deepeningAmount + 4 * params[P_PERIOD]));
    pRows = (row*)malloc((long long)sizeof(*pRows) * (deepeningAmount + 4 * params[P_PERIOD]));
@@ -1702,20 +1582,19 @@ static void deepen(){
    /* before reporting new queue size, shrink tree back down */
    printf(" -> ");
    fflush(stdout);
-//   hash = savedHash;
    //perdidor = 0;
-
+   
    /* signal time for dump */
-   if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;
-
+   if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;\
+   
    doCompact();
-
+   
    /* now finish report */
    putnum(qTail - qHead);
    printf("/");
    putnum(qTail);
    printf("\n");
-
+   
    /* Report successful/unsuccessful dump */
    if (dumpFlag == DUMPSUCCESS)
    {
@@ -1736,7 +1615,6 @@ static void deepen(){
 #endif
       printf("State dump unsuccessful\n");
    }
-
    
    fflush(stdout);
 }
@@ -1760,8 +1638,6 @@ int gcd(int a, int b) {
 
 void echoParams(){
    printf("Rule: %s\n",rule);
-//   printRule();
-//   printf("\n");
    printf("Period: %d\n",params[P_PERIOD]);
    printf("Offset: %d\n",params[P_OFFSET]);
    printf("Width:  %d\n",params[P_WIDTH]);
@@ -1801,12 +1677,6 @@ void usage(){
    printf("  iNN  groups 2^NN queue entries to an index node (default: 4)\n");
    printf("\n");
    printf("  mNN  sets minimum deepening increment to NN (default: period)\n");
-   //printf("  lNN  terminates the search if it reaches a depth of NN (default: %d)\n",DEFAULT_DEPTH_LIMIT);
-   //printf("  mNN  disallows spaceships longer than a depth of NN\n");
-   //printf("       (the spaceship length is approximately depth/period)\n");
-   //printf("  fNN  disallows spaceships that do not have the full period by a depth of NN\n");
-   //printf("  tNN  disallows full-period rows of width greater than NN\n");
-   //printf("  sNN  terminates the search if NN spaceships are found (default: 1)\n");
    printf("\n");
    printf("  d    dumps the search state after each queue compaction\n");
    //printf("  j    dumps the state at start of search\n");
@@ -1860,6 +1730,7 @@ int main(int argc, char *argv[]){
    params[P_OFFSET] = 0;
    params[P_SYMMETRY] = 0;
    params[P_REORDER] = 1;
+   params[P_CHECKPOINT] = 0;
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
@@ -1872,22 +1743,17 @@ int main(int argc, char *argv[]){
 
    //int dumpandexit = 0;
    int skipNext = 0;
-   //int div1,div2;
    int s;
    if(argc == 2 && !strcmp(argv[1],"c")){
       usage();
       return 0;
    }
-   parseRule(rule, nttable) ; // pick up default rule
+   parseRule(rule, nttable) ; /* pick up default rule */
    if(argc == 3 && (!strcmp(argv[1],"s") || !strcmp(argv[1],"S") || !strcmp(argv[1],"p") || !strcmp(argv[1],"P"))) loadDumpFlag = 1;
    else{
-      for(s = 1; s < argc; s++){    //read input parameters
-         if(skipNext){
-            skipNext = 0;
-            continue;
-         }
+      for(s = 1; s < argc; s++){    /* read input parameters */
          switch(argv[s][0]){
-            case 'b': case 'B':     //read rule
+            case 'b': case 'B':     /* read rule */
                rule = argv[s] ;
                err = parseRule(argv[s], nttable) ;
                if (err != 0) {
@@ -1904,7 +1770,7 @@ int main(int argc, char *argv[]){
             case 'g': case 'G': params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
             case 'd': case 'D': params[P_CHECKPOINT] = 1; break;
             //case 'j': case 'J': dumpandexit = 1; break;
-            case 'e': case 'E': params[P_INIT_ROWS] = s + 1; skipNext = 1; break;
+            case 'e': case 'E': params[P_INIT_ROWS] = ++s; break;
             case 'm': case 'M': sscanf(&argv[s][1], "%d", &params[P_MINDEEP]); break;
             case 't': case 'T': sscanf(&argv[s][1], "%d", &params[P_NUMTHREADS]); break;
             case 'o': case 'O': params[P_REORDER] = 0; break;
@@ -1932,10 +1798,6 @@ int main(int argc, char *argv[]){
    
       params[P_DEPTHLIMIT] = DEFAULT_DEPTHLIMIT;
    
-      //if(params[P_SYMMETRY] == SYM_ASYM){
-      //   mode = asymmetric;
-      //}
-   
       base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
       rows = (row*)malloc(QSIZE*sizeof(row));
       if (base == 0 || rows == 0) {
@@ -1956,8 +1818,8 @@ int main(int argc, char *argv[]){
       if(params[P_INIT_ROWS]) loadInitRows(argv[params[P_INIT_ROWS]]);
    }
    
-   echoParams();
    
+   /* Allocate lookahead cache */
 #ifndef NOCACHE
    cachesize = 32768 ;
    while (cachesize * sizeof(cacheentry) < 550000 * cachemem)
@@ -1974,6 +1836,8 @@ int main(int argc, char *argv[]){
    for(int i = 0; i < params[P_NUMTHREADS]; i++)
       cache[i] = totalCache + (cachesize + 5) * i;
 #endif
+   
+   echoParams();
    
    makePhases();
    fasterTable();
