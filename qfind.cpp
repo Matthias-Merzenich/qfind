@@ -1,7 +1,27 @@
-/* qfind v1.0
-** A spaceship search program by Matthias Merzenich
-** Based on code by David Eppstein, Paul Tooke, and "zdr"
+/* qfind v1.0.1
+** A spaceship search program by Matthias Merzenich.
+** Based on code by David Eppstein, "zdr", Paul Tooke, Tomas Rokicki,.
+** Thanks to Aidan F. Pierce, and Adam P. Goucher for code and suggestions.
+**
 ** This is an attempt at combining the functionality of gfind and zfind.
+**
+** Version History:
+** 0.1, 19 June 2017
+**    Initial release
+** 0.2, July 2017
+**    Add mimimum deepening increment parameter
+**    Add ability to extend partial results
+**    Make parallel loop scheduiing dynamic
+** 1.0, 3 January 2020
+**    Add support for non-totalistic rules
+**    Add lookahead caching
+**    Add memory limit parameter
+**    Make table generation dynamic
+**    Reduce memory usage
+**    Allow searches of width greater than 10 
+** 1.0.1, 7 January 2020
+**    Clean up code
+**    Make memlimit and cachemem into proper parameters
 */
 
 #include <stdio.h>
@@ -14,8 +34,8 @@
 
 //#define NOCACHE
 
-#define BANNER "qfind v1.0 by Matthias Merzenich, 3 January 2019"
-#define FILEVERSION ((unsigned long) 2019010301)  /* yyyymmddnn */
+#define BANNER "qfind v1.0.1 by Matthias Merzenich, 7 January 2020"
+#define FILEVERSION ((unsigned long) 2020010701)  /* yyyymmddnn */
 
 #define CHUNK_SIZE 64
 
@@ -37,8 +57,10 @@
 #define P_NUMTHREADS 10
 #define P_INIT_ROWS 11
 #define P_MINDEEP 12
+#define P_MEMLIMIT 13
+#define P_CACHEMEM 14
 
-#define NUM_PARAMS 13
+#define NUM_PARAMS 15
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -91,9 +113,8 @@ uint16_t **gInd3 ;
 uint32_t *gcount ;
 uint16_t *gRows;
 long long memusage = 0;
-long long memlimit = 0x7000000000000000LL ;
+long long memlimit = 0;
 
-int cachemem = 32 ; /* number of megabytes for the cache */
 #ifndef NOCACHE
 long long cachesize ;
 struct cacheentry {
@@ -321,7 +342,7 @@ uint16_t *bmalloc(int siz) {
    if (siz > bbuf_left) {
       bbuf_left = 1 << (2 * width) ;
       memusage += 2*bbuf_left ;
-      if (memusage > memlimit) {
+      if (params[P_MEMLIMIT] >= 0 && memusage > memlimit) {
          printf("Aborting due to excessive memory usage\n") ;
          exit(0) ;
       }
@@ -1001,8 +1022,6 @@ void dumpState()
     fprintf(fp,"%d\n",offset);
     fprintf(fp,"%d\n",mode);
     fprintf(fp,"%d\n",lastdeep);
-    fprintf(fp,"%d\n",cachemem);
-    fprintf(fp,"%lld\n",memlimit);
 
     fprintf(fp,"%u\n",qHead-qStart);
     fprintf(fp,"%u\n",qEnd-qStart);
@@ -1221,13 +1240,6 @@ unsigned int loadUInt(FILE *fp)
     return v;
 }
 
-long long int loadLLInt(FILE *fp)
-{
-    long long int v;
-    if (fscanf(fp,"%lld\n",&v) != 1) loadFail();
-    return v;
-}
-
 void loadState(char * cmd, char * file)
 {
    FILE * fp;
@@ -1260,8 +1272,7 @@ void loadState(char * cmd, char * file)
    offset         = loadInt(fp);
    mode           = (Mode)(loadInt(fp));
    lastdeep       = loadInt(fp);
-   cachemem       = loadInt(fp);
-   memlimit       = loadLLInt(fp);
+   
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    //perdidor        = 0;
    aborting        = 0;
@@ -1650,6 +1661,10 @@ void echoParams(){
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
    printf("Minimum deepening increment: %d\n",MINDEEP);
+#ifndef NOCACHE
+   printf("Cache memory per thread: %d megabytes\n", params[P_CACHEMEM]);
+#endif
+   if(params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
 }
 
@@ -1664,27 +1679,32 @@ void usage(){
    printf("\n");
    printf("Available options:\n");
    printf("  bNN/sNN searches for spaceships in the specified rule (default: b3/s23)\n");
+   printf("          Non-totalistic rules can be entered using Hensel notation.\n");
    printf("\n");
    printf("  pNN  searches for spaceships with period NN\n");
    printf("  kNN  searches for spaceships that travel NN cells every period\n");
    printf("  wNN  searches for spaceships with search width NN\n");
    printf("       (full width depends on symmetry type)\n");
    printf("\n");
+   printf("  a    searches for asymmetric spaceships\n");
+   printf("  u    searches for odd bilaterally symmetric spaceships\n");
+   printf("  v    searches for even bilaterally symmetric spaceships\n");
+   printf("  g    searches for symmetric spaceships with gutters (empty center column)\n");
+   printf("\n");
    printf("  tNN  runs search using NN threads during deepening step (default: 1)\n");
    printf("  hNN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("       Use h0 to disable duplicate elimination.\n");
    printf("  qNN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  iNN  groups 2^NN queue entries to an index node (default: 4)\n");
+#ifndef NOCACHE
+   printf("  cNN  allocates NN megabytes per thread for lookahead cache (default: 32)\n");
+#endif
+   printf("  rNN  limits memory usage to NN megabytes (default: no limit)\n");
    printf("\n");
    printf("  mNN  sets minimum deepening increment to NN (default: period)\n");
    printf("\n");
    printf("  d    dumps the search state after each queue compaction\n");
    //printf("  j    dumps the state at start of search\n");
-   printf("\n");
-   printf("  a    searches for asymmetric spaceships\n");
-   printf("  u    searches for odd bilaterally symmetric spaceships\n");
-   printf("  v    searches for even bilaterally symmetric spaceships\n");
-   printf("  g    searches for symmetric spaceships with gutters (empty center column)\n");
    printf("\n");
    printf("  o    uses naive search order (not recommended)\n");
    printf("\n");
@@ -1724,6 +1744,10 @@ void loadInitRows(char * file){
 
 int main(int argc, char *argv[]){
    printf("%s\n",BANNER);
+   printf("-") ;
+   for (int i=0; i<argc; i++)
+      printf(" %s", argv[i]) ;
+   printf("\n");
    
    params[P_WIDTH] = 0;
    params[P_PERIOD] = 0;
@@ -1737,12 +1761,13 @@ int main(int argc, char *argv[]){
    params[P_NUMTHREADS] = 1;
    params[P_INIT_ROWS] = 0;
    params[P_MINDEEP] = 0;
+   params[P_CACHEMEM] = 32;
+   params[P_MEMLIMIT] = -1;
    
    int loadDumpFlag = 0;
    const char *err ;
 
    //int dumpandexit = 0;
-   int skipNext = 0;
    int s;
    if(argc == 2 && !strcmp(argv[1],"c")){
       usage();
@@ -1777,15 +1802,17 @@ int main(int argc, char *argv[]){
             case 'q': case 'Q': sscanf(&argv[s][1], "%d", &params[P_QBITS]); break;
             case 'h': case 'H': sscanf(&argv[s][1], "%d", &params[P_HASHBITS]); break;
             case 'i': case 'I': sscanf(&argv[s][1], "%d", &params[P_BASEBITS]); break;
-            case 'R': sscanf(&argv[s][1], "%lld", &memlimit) ; memlimit <<= 20 ; break ;
-            case 'C': sscanf(&argv[s][1], "%d", &cachemem); break ;
+            case 'c': case 'C': sscanf(&argv[s][1], "%d", &params[P_CACHEMEM]); break;
+            case 'r': case 'R': sscanf(&argv[s][1], "%d", &params[P_MEMLIMIT]); break;
+            default:
+               printf("Unrecognized option %s\n", argv[s]) ;
+               exit(10);
          }
       }
    }
    
    if(loadDumpFlag) loadState(argv[1],argv[2]);
    else{
-            
       width = params[P_WIDTH];
       period = params[P_PERIOD];
       offset = params[P_OFFSET];
@@ -1793,11 +1820,10 @@ int main(int argc, char *argv[]){
       lastdeep = 0;
       hashPhase = (gcd(period,offset)>1);
       
-   
       nRowsInState = period+period;
-   
+      
       params[P_DEPTHLIMIT] = DEFAULT_DEPTHLIMIT;
-   
+      
       base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
       rows = (row*)malloc(QSIZE*sizeof(row));
       if (base == 0 || rows == 0) {
@@ -1818,14 +1844,15 @@ int main(int argc, char *argv[]){
       if(params[P_INIT_ROWS]) loadInitRows(argv[params[P_INIT_ROWS]]);
    }
    
+   memlimit = ((long long)params[P_MEMLIMIT]) << 20;
    
    /* Allocate lookahead cache */
 #ifndef NOCACHE
    cachesize = 32768 ;
-   while (cachesize * sizeof(cacheentry) < 550000 * cachemem)
+   while (cachesize * sizeof(cacheentry) < 550000 * params[P_CACHEMEM])
       cachesize <<= 1 ;
    memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
-   if(memusage > memlimit){
+   if(params[P_MEMLIMIT] >= 0 && memusage > memlimit){
       printf("Not enough memory to allocate lookahead cache\n");
       exit(0);
    }
