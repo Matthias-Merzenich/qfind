@@ -2,7 +2,7 @@ qfind is a spaceship search program for Conway's Game of Life and other
 Life-like cellular automata.  It is based on David Eppstein's gfind and
 zdr's zfind search programs.
 
-Two scripts are provided:
+Three scripts are provided:
 
 qfind.cpp:
   The main search program.  This program uses OpenMP to achieve rather
@@ -10,6 +10,13 @@ qfind.cpp:
   for your compiler.  I use
 
   g++ qfind.cpp -O3 -fopenmp -march=native -o qfind
+
+
+qfind-s.cpp
+  A simplified version of qfind with fewer features that is slightly faster.
+  You must change the period, offset, and width of the desired search in the
+  code before compiling.  This version only allows gcd(period,offset) = 1.
+  Compilation is otherwise the same.
 
 
 get-rows.py:

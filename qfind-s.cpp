@@ -1,30 +1,12 @@
-/* qfind v1.1
-** A spaceship search program by Matthias Merzenich.
-** Based on code by David Eppstein, "zdr", Paul Tooke, Tomas Rokicki,.
-** Thanks to Aidan F. Pierce, and Adam P. Goucher for code and suggestions.
-**
-** This is an attempt at combining the functionality of gfind and zfind.
-**
-** Version History:
-** 0.1, 19 June 2017
-**    Initial release
-** 0.2, July 2017
-**    Add mimimum deepening increment parameter
-**    Add ability to extend partial results
-**    Make parallel loop scheduiing dynamic
-** 1.0, 3 January 2020
-**    Add support for non-totalistic rules
-**    Add lookahead caching
-**    Add memory limit parameter
-**    Make table generation dynamic
-**    Reduce memory usage
-**    Allow searches of width greater than 10 
-** 1.0.1, 7 January 2020
-**    Clean up code
-**    Make memlimit and cachemem into proper parameters
-** 1.1, 7 January 2020
-**    Add option to disable output during deepening step
+/* qfind-simple v1.1
+** A Simplified version of qfind that is more limited but slightly faster.
 */
+
+/* Change the following three values before compiling */
+/* You must have gcd(PERIOD,OFFSET) = 1               */
+#define PERIOD 5
+#define OFFSET 1
+#define WIDTH 9
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,7 +18,7 @@
 
 //#define NOCACHE
 
-#define BANNER "qfind v1.1 by Matthias Merzenich, 7 January 2020"
+#define BANNER "qfind-simple v1.1 by Matthias Merzenich, 7 January 2020"
 #define FILEVERSION ((unsigned long) 2020010702)  /* yyyymmddnn */
 
 #define CHUNK_SIZE 64
@@ -82,8 +64,6 @@ int phase;
 
 int period;
 #define MAXPERIOD 30
-
-int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
 
 int offset;
 
@@ -503,34 +483,6 @@ void genStatCounts() {
                      cnt[(((1<<width) + row4) << 6) +
                        (row1 << 4) + (row2 << 2) + row3] ;
    free(cnt) ;
-}
-
-void makePhases(){
-   int i;
-   for (i = 0; i < period; i++) backOff[i] = -1;
-   i = 0;
-   for (;;) {
-      int j = offset;
-      while (backOff[(i+j)%period] >= 0 && j < period) j++;
-      if (j == period) {
-         backOff[i] = period-i;
-         break;
-      }
-      backOff[i] = j;
-      i = (i+j)%period;
-   }
-   for (i = 0; i < period; i++)
-      fwdOff[(i+backOff[i])%period] = backOff[i];
-   for (i = 0; i < period; i++) {
-      int j = (i - fwdOff[i]);
-      if (j < 0) j += period;
-      doubleOff[i] = fwdOff[i] + fwdOff[j];
-   }
-   for (i = 0; i <  period; i++){
-      int j = (i - fwdOff[i]);
-      if (j < 0) j += period;
-      tripleOff[i] = fwdOff[i] + doubleOff[j];
-   }
 }
 
 /* ====================================================== */
@@ -1347,7 +1299,7 @@ void setkey(int h, int v) {
 }
 #endif
 
-int lookAhead(row *pRows, int a, int pPhase){
+int lookAhead(row *pRows, int a){
 // indices: first number represents vertical offset,
 //          second number represents generational offset
    int ri11, ri12, ri13, ri22, ri23;
@@ -1356,33 +1308,32 @@ int lookAhead(row *pRows, int a, int pPhase){
    int row11, row12, row13, row22, row23;
    int k;
    
-   getoffsetcount(pRows[a - params[P_PERIOD] - fwdOff[pPhase]],
-                  pRows[a - fwdOff[pPhase]],
+   getoffsetcount(pRows[a - PERIOD - OFFSET],
+                  pRows[a - OFFSET],
                   pRows[a], riStart11, numRows11);
    if (!numRows11)
       return 0;
    
-   getoffsetcount(pRows[a - params[P_PERIOD] - doubleOff[pPhase]],
-                  pRows[a - doubleOff[pPhase]],
-                  pRows[a - fwdOff[pPhase]], riStart12, numRows12);
+   getoffsetcount(pRows[a - PERIOD - 2*OFFSET],
+                  pRows[a - 2*OFFSET],
+                  pRows[a - OFFSET], riStart12, numRows12);
    
-   if(tripleOff[pPhase] >= params[P_PERIOD]){
-      riStart13 = pRows + (a + params[P_PERIOD] - tripleOff[pPhase]);
+   #if 3*OFFSET >= PERIOD
+      riStart13 = pRows + (a + PERIOD - 3*OFFSET);
       numRows13 = 1;
 #ifndef NOCACHE
       k = getkey(riStart11, riStart12, (uint16_t*)(gcount + riStart13[0]),
-         (pRows[a-doubleOff[pPhase]] << width) + pRows[a-tripleOff[pPhase]]);
+         (pRows[a-2*OFFSET] << width) + pRows[a-3*OFFSET]);
 #endif
-   }
-   else{
-      getoffsetcount(pRows[a - params[P_PERIOD] - tripleOff[pPhase]],
-                     pRows[a - tripleOff[pPhase]],
-                     pRows[a - doubleOff[pPhase]], riStart13, numRows13);
+   #else
+      getoffsetcount(pRows[a - PERIOD - 3*OFFSET],
+                     pRows[a - 3*OFFSET],
+                     pRows[a - 2*OFFSET], riStart13, numRows13);
 #ifndef NOCACHE
       k = getkey(riStart11, riStart12, riStart13,
-         (pRows[a-doubleOff[pPhase]] << width) + pRows[a-tripleOff[pPhase]]);
+         (pRows[a-2*OFFSET] << width) + pRows[a-3*OFFSET]);
 #endif
-   }
+   #endif
 #ifndef NOCACHE
    if (k < 0)
       return k+2;
@@ -1392,13 +1343,13 @@ int lookAhead(row *pRows, int a, int pPhase){
       row11 = riStart11[ri11];
       for(ri12 = 0; ri12 < numRows12; ++ri12){
          row12 = riStart12[ri12];
-         getoffsetcount(pRows[a - doubleOff[pPhase]],
+         getoffsetcount(pRows[a - 2*OFFSET],
                         row12, row11, riStart22, numRows22);
          if(!numRows22) continue;
          
          for(ri13 = 0; ri13 < numRows13; ++ri13){
             row13 = riStart13[ri13];
-            getoffsetcount(pRows[a - tripleOff[pPhase]],
+            getoffsetcount(pRows[a - 3*OFFSET],
                            row13, row12, riStart23, numRows23);
             if(!numRows23) continue;
             
@@ -1443,9 +1394,9 @@ void process(node theNode)
    ++pPhase;
    if(pPhase == period) pPhase = 0;
    
-   getoffsetcount(pRows[currRow - 2 * period],
-                     pRows[currRow - period],
-                     pRows[currRow - period + backOff[pPhase]],
+   getoffsetcount(pRows[currRow - 2 * PERIOD],
+                     pRows[currRow - PERIOD],
+                     pRows[currRow - PERIOD + OFFSET],
                      riStart, numRows) ;
 
    if(theNode == 0){
@@ -1454,7 +1405,7 @@ void process(node theNode)
    
    for(i = firstRow; i < numRows; ++i){
       pRows[currRow] = riStart[i];
-      if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow, pPhase)){
+      if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow)){
          enqueue(theNode, pRows[currRow]);
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
@@ -1463,11 +1414,8 @@ void process(node theNode)
 }
 
 int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *pRows){
-   int pPhase;
-   pPhase = peekPhase(theNode);
-
    node x = theNode;
-   uint32_t startRow = 2*period + pPhase + 1;
+   uint32_t startRow = 2*PERIOD + 1;
    uint32_t currRow = startRow;
    
    int i;
@@ -1475,13 +1423,10 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       pRows[i] = ROW(x);
       x = PARENT(x);
    }
-
-   ++pPhase;
-   if(pPhase == period) pPhase = 0;
    
-   getoffsetcount(pRows[currRow - 2 * period],
-                  pRows[currRow - period],
-                  pRows[currRow - period + backOff[pPhase]],
+   getoffsetcount(pRows[currRow - 2 * PERIOD],
+                  pRows[currRow - PERIOD],
+                  pRows[currRow - PERIOD + OFFSET],
                   pInd[currRow], pRemain[currRow]) ;
    pInd[currRow] += pRemain[currRow];
    
@@ -1492,8 +1437,6 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       /* back up if there are no rows left to check at this depth */
       if(!pRemain[currRow]){
          --currRow;
-         if(pPhase == 0) pPhase = period;
-         --pPhase;
          if(currRow < startRow)
             return 0;
          
@@ -1501,35 +1444,33 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       }
       pRows[currRow] = *(pInd[currRow] - pRemain[currRow]);
       --pRemain[currRow];
-      if(!lookAhead(pRows, currRow, pPhase)) continue;
+      if(!lookAhead(pRows, currRow)) continue;
 
       ++currRow;
-      ++pPhase;
-      if(pPhase == period) pPhase = 0;
       /* Check if we reached the desired depth. If so,  
          check if the result is a complete spaceship */
       if(currRow > startRow + howDeep){
          if(params[P_PRINTDEEP] == 0) return 1;
-         for(i = 1; i <= period; ++i){
+         for(i = 1; i <= PERIOD; ++i){
             if(pRows[currRow - i]) return 1;
          }
-         currRow -= period;
-         for(i = 1; i<= period; ++i){
+         currRow -= PERIOD;
+         for(i = 1; i<= PERIOD; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
          /* If we got here then we found a spaceship! */
          #pragma omp critical(printWhileDeepening)
          {
-            success(theNode, pRows, startRow - 1, currRow + period - 1);
+            success(theNode, pRows, startRow - 1, currRow + PERIOD - 1);
          }
          
          return 1;
          
       }
       
-      getoffsetcount(pRows[currRow - 2 * period],
-                     pRows[currRow - period],
-                     pRows[currRow - period + backOff[pPhase]],
+      getoffsetcount(pRows[currRow - 2 * PERIOD],
+                     pRows[currRow - PERIOD],
+                     pRows[currRow - PERIOD + OFFSET],
                      pInd[currRow], pRemain[currRow]) ;
       pInd[currRow] += pRemain[currRow];
    }
@@ -1663,20 +1604,31 @@ void echoParams(){
 
 
 void usage(){
+/*
    printf("Usage: \"qfind options\"\n");
    printf("  e.g. \"qfind B3/S23 p3 k1 w6 v\" searches Life (rule B3/S23) for\n");
    printf("  c/3 orthogonal spaceships with even bilateral symmetry and a\n");
    printf("  search width of 6 (full width 12).\n");
    printf("\n");
+*/
+   printf("Three required parameters, the period, offset, and width, must be\n");
+   printf("set within the code before it is compiled. You have compiled with\n");
+   printf("\n");
+   printf("Period: %d\n",PERIOD);
+   printf("Offset: %d\n",OFFSET);
+   printf("Width:  %d\n",WIDTH);
+   printf("\n");
    printf("Available options:\n");
    printf("  bNN/sNN searches for spaceships in the specified rule (default: b3/s23)\n");
    printf("          Non-totalistic rules can be entered using Hensel notation.\n");
    printf("\n");
+/*
    printf("  pNN  searches for spaceships with period NN\n");
    printf("  kNN  searches for spaceships that travel NN cells every period\n");
    printf("  wNN  searches for spaceships with search width NN\n");
    printf("       (full width depends on symmetry type)\n");
    printf("\n");
+*/
    printf("  a    searches for asymmetric spaceships\n");
    printf("  u    searches for odd bilaterally symmetric spaceships\n");
    printf("  v    searches for even bilaterally symmetric spaceships\n");
@@ -1741,9 +1693,9 @@ int main(int argc, char *argv[]){
       printf(" %s", argv[i]) ;
    printf("\n\n");
    
-   params[P_WIDTH] = 0;
-   params[P_PERIOD] = 0;
-   params[P_OFFSET] = 0;
+   params[P_WIDTH] = WIDTH;
+   params[P_PERIOD] = PERIOD;
+   params[P_OFFSET] = OFFSET;
    params[P_SYMMETRY] = 0;
    params[P_REORDER] = 1;
    params[P_CHECKPOINT] = 0;
@@ -1779,9 +1731,11 @@ int main(int argc, char *argv[]){
                   exit(10) ;
                }
             break;
+/*
             case 'w': case 'W': sscanf(&argv[s][1], "%d", &params[P_WIDTH]); break;
             case 'p': case 'P': sscanf(&argv[s][1], "%d", &params[P_PERIOD]); break;
             case 'k': case 'K': sscanf(&argv[s][1], "%d", &params[P_OFFSET]); break;
+*/
             case 'u': case 'U': params[P_SYMMETRY] = SYM_ODD; mode = odd; break;
             case 'v': case 'V': params[P_SYMMETRY] = SYM_EVEN; mode = even; break;
             case 'a': case 'A': params[P_SYMMETRY] = SYM_ASYM; mode = asymmetric; break;
@@ -1860,7 +1814,6 @@ int main(int argc, char *argv[]){
    
    echoParams();
    
-   makePhases();
    fasterTable();
    makeTables();
    
