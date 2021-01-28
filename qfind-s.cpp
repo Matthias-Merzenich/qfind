@@ -10,8 +10,8 @@
 
 //#define NOCACHE
 
-/* Change the following three values before compiling */
-/* You must have gcd(PERIOD,OFFSET) = 1               */
+/*  Change the following three values before compiling.  */
+/*  You must have gcd(PERIOD,OFFSET) = 1.                */
 #define PERIOD 5
 #define OFFSET 2
 #define WIDTH 8
@@ -148,7 +148,7 @@ void process(node theNode)
    getoffsetcount(pRows[currRow - 2 * PERIOD],
                      pRows[currRow - PERIOD],
                      pRows[currRow - PERIOD + OFFSET],
-                     riStart, numRows) ;
+                     riStart, numRows);
 
    if(theNode == 0){
       firstRow = 1;
@@ -158,6 +158,10 @@ void process(node theNode)
       pRows[currRow] = riStart[i];
       if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow)){
          enqueue(theNode, pRows[currRow]);
+         if(currentDepth() > longest){
+            bufferPattern(qTail-1, NULL, 0, 0, 0);
+            longest = currentDepth();
+         }
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
       }
@@ -178,7 +182,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
    getoffsetcount(pRows[currRow - 2 * PERIOD],
                   pRows[currRow - PERIOD],
                   pRows[currRow - PERIOD + OFFSET],
-                  pInd[currRow], pRemain[currRow]) ;
+                  pInd[currRow], pRemain[currRow]);
    pInd[currRow] += pRemain[currRow];
    
    
@@ -220,7 +224,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       getoffsetcount(pRows[currRow - 2 * PERIOD],
                      pRows[currRow - PERIOD],
                      pRows[currRow - PERIOD + OFFSET],
-                     pInd[currRow], pRemain[currRow]) ;
+                     pInd[currRow], pRemain[currRow]);
       pInd[currRow] += pRemain[currRow];
    }
 }
@@ -259,7 +263,7 @@ int main(int argc, char *argv[]){
    
    breadthFirst();
    
-   printf("Search complete.\n");
+   finalReport();
    
    return 0;
 }

@@ -146,7 +146,7 @@ void process(node theNode)
    getoffsetcount(pRows[currRow - 2 * period],
                      pRows[currRow - period],
                      pRows[currRow - period + backOff[pPhase]],
-                     riStart, numRows) ;
+                     riStart, numRows);
 
    if(theNode == 0){
       firstRow = 1;
@@ -156,6 +156,10 @@ void process(node theNode)
       pRows[currRow] = riStart[i];
       if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow, pPhase)){
          enqueue(theNode, pRows[currRow]);
+         if(currentDepth() > longest){
+            bufferPattern(qTail-1, NULL, 0, 0, 0);
+            longest = currentDepth();
+         }
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
       }
@@ -182,7 +186,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
    getoffsetcount(pRows[currRow - 2 * period],
                   pRows[currRow - period],
                   pRows[currRow - period + backOff[pPhase]],
-                  pInd[currRow], pRemain[currRow]) ;
+                  pInd[currRow], pRemain[currRow]);
    pInd[currRow] += pRemain[currRow];
    
    
@@ -228,7 +232,7 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       getoffsetcount(pRows[currRow - 2 * period],
                      pRows[currRow - period],
                      pRows[currRow - period + backOff[pPhase]],
-                     pInd[currRow], pRemain[currRow]) ;
+                     pInd[currRow], pRemain[currRow]);
       pInd[currRow] += pRemain[currRow];
    }
 }
@@ -267,7 +271,7 @@ int main(int argc, char *argv[]){
    
    breadthFirst();
    
-   printf("Search complete.\n");
+   finalReport();
    
    return 0;
 }

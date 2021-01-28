@@ -72,6 +72,7 @@ int offset;
 
 int aborting;
 int nFound;
+int longest = 0;        /* Stores length of current longest partial result */
 
 enum Mode {
    asymmetric,          /* basic orthogonal or diagonal pattern */
@@ -640,16 +641,17 @@ static inline void setVisited(node b) {
 int RLEcount = 0;
 int RLElineWidth = 0;
 char RLEchar;
+char * patternBuf;
 
-void sendRLE(char c) {
+void bufRLE(char c) {
   if (RLEcount > 0 && c != RLEchar) {
       if (RLElineWidth++ >= MAXRLELINEWIDTH) {
-         if (RLEchar != '\n') putchar('\n');
+         if (RLEchar != '\n') sprintf(patternBuf+strlen(patternBuf),"\n");
          RLElineWidth = 0;
       }
-    if (RLEcount == 1) putchar(RLEchar);
+    if (RLEcount == 1) strncat(patternBuf,&RLEchar,1);
     else {
-       printf("%d%c", RLEcount, RLEchar);
+       sprintf(patternBuf+strlen(patternBuf),"%d%c", RLEcount, RLEchar);
        RLElineWidth ++;
        if (RLEcount > 9) RLElineWidth++;
     }
@@ -662,18 +664,16 @@ void sendRLE(char c) {
   } else RLElineWidth = 0;
 }
 
-int outputParity = 0;
-
-void putRow(unsigned long rr, unsigned long r, int shift) {
+void bufRow(unsigned long rr, unsigned long r, int shift) {
    while (r | rr) {
       if (shift == 0)
-         sendRLE(r & 1 ? 'o' : 'b');
+         bufRLE(r & 1 ? 'o' : 'b');
       else shift--;
       r >>= 1;
       if (rr & 1) r |= (1<<31);
       rr >>= 1;
    }
-   sendRLE('$');
+   bufRLE('$');
 }
 
 int modeWidth() {
@@ -706,7 +706,8 @@ int oldnrows = 0;
 unsigned long * oldsrows;
 unsigned long * oldssrows;
 
-void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
+/* Buffers RLE into patternBuf; returns 1 if pattern successfully buffered */ 
+int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDuplicate){
    node c;
    int nrows = 0;
    int skewAmount = 0;
@@ -722,9 +723,10 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    if(pRows != NULL){
       while(pRows[currRow] == 0){
          if(currRow == 0){
+            if(!checkDuplicate) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
-            return;
+            return 0;
          }
          currRow--;
       }
@@ -745,9 +747,10 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
       while (ROW(b) == 0) {
          b = PARENT(b);
          if (b == 0) {
+            if(!checkDuplicate) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
-            return;
+            return 0;
          }
       }
    }
@@ -755,9 +758,10 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    
    for (p = 0; p < period-1; p++) b = PARENT(b);
    if (b == 0) {
+      if(!checkDuplicate) return 0;
       printf("Success called on search root!\n");
       aborting = 1;
-      return;
+      return 0;
    }
    
    /* count rows */
@@ -777,6 +781,7 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
       sxsAllocData2 = (unsigned long*)malloc(sxsAllocRows * sizeof(unsigned long));
       oldsrows = (unsigned long*)calloc(sxsAllocRows, sizeof(unsigned long));
       oldssrows = (unsigned long*)calloc(sxsAllocRows, sizeof(unsigned long));
+      patternBuf = (char*)malloc(((2 * MAXWIDTH + 4) * sxsAllocRows + 300) * sizeof(char));
    }
    else if (sxsAllocRows < sxsNeeded)
    {
@@ -833,7 +838,7 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
          default:
             printf("Unexpected mode in success!\n");
             aborting = 1;
-            return;
+            return 0;
       }
    }
    
@@ -854,7 +859,7 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
          break;
       }
    }
-   if(allEmpty) return;
+   if(allEmpty) return 0;
    
    /* make at least one row have nonzero first bit */
    i = 0;
@@ -884,35 +889,45 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    margin = 0;
 
    /* make sure we didn't just output the exact same pattern (happens a lot for puffer) */
-   if (nrows == oldnrows) {
-      int different = 0;
-      for (i = 0; i < nrows && !different; i++)
-         different = (srows[i] != oldsrows[i] || ssrows[i] != oldssrows[i]);
-      if (!different) return;
+   if(checkDuplicate){
+      if (nrows == oldnrows) {
+         int different = 0;
+         for (i = 0; i < nrows && !different; i++)
+            different = (srows[i] != oldsrows[i] || ssrows[i] != oldssrows[i]);
+         if (!different) return 0;
+      }
+      
+      /* replace previous saved rows with new rows */
+      oldnrows = nrows;
+      oldsrows = (unsigned long*)realloc(oldsrows, sxsAllocRows * sizeof(unsigned long));
+      oldssrows = (unsigned long*)realloc(oldssrows, sxsAllocRows * sizeof(unsigned long));
+      memcpy(oldsrows, sxsAllocData, sxsAllocRows * sizeof(unsigned long));
+      memcpy(oldssrows, sxsAllocData2, sxsAllocRows * sizeof(unsigned long));
    }
    
-   /* replace previous saved rows with new rows */
-   oldnrows = nrows;
-   oldsrows = (unsigned long*)realloc(oldsrows, sxsAllocRows * sizeof(unsigned long));
-   oldssrows = (unsigned long*)realloc(oldssrows, sxsAllocRows * sizeof(unsigned long));
-   memcpy(oldsrows, sxsAllocData, sxsAllocRows * sizeof(unsigned long));
-   memcpy(oldssrows, sxsAllocData2, sxsAllocRows * sizeof(unsigned long));
+   /* Buffer output */
+   patternBuf = (char*)realloc(patternBuf, ((2 * MAXWIDTH + 4) * sxsAllocRows + 300) * sizeof(char));
    
-   /* output it all */
-   printf("\nx = %d, y = %d, rule = %s", swidth - margin, nrows, rule);
-   putchar('\n');
-
+   sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, rule);
+      
    while (nrows-- > 0) {
-      if (margin > nrows) putRow(ssrows[nrows], srows[nrows], margin - nrows);
-      else putRow(ssrows[nrows], srows[nrows], 0);
+      if (margin > nrows) bufRow(ssrows[nrows], srows[nrows], margin - nrows);
+      else bufRow(ssrows[nrows], srows[nrows], 0);
    }
    RLEchar = '!';
-   sendRLE('\0');
-   printf("\n\n");
-   fflush(stdout);
+   bufRLE('\0');
+   sprintf(patternBuf+strlen(patternBuf),"\n");
+   
    //if (++nFound >= findLimit) aborting = 1;
+   
+   return 1;
 }
 
+void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
+   if(bufferPattern(b, pRows, nodeRow, lastRow, 1))
+      printf("\n%s\n",patternBuf);
+   fflush(stdout);
+}
 
 /* Is this a node at which we can stop? */
 int terminal(node n){
@@ -1871,4 +1886,11 @@ void searchSetup(){
    makeTables();
    
    rephase();
+}
+
+void finalReport(){
+   printf("Search complete.\n\n");
+   printf("Maximum depth reached: %d\n",longest);
+   if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
+   else printf("No partial results found.\n");
 }
