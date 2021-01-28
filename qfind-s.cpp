@@ -18,12 +18,6 @@
 
 #define QSIMPLE
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <omp.h>
-#include <time.h>
 #include "common.hpp"
 
 #if WIDTH < 1 || PERIOD < 1 || OFFSET < 1
@@ -57,8 +51,8 @@
 #endif
 
 int lookAhead(row *pRows, int a){
-// indices: first number represents vertical offset,
-//          second number represents generational offset
+/* indices: first digit represents vertical offset,      */
+/*          second digit represents generational offset  */
    int ri11, ri12, ri13, ri22, ri23;
    uint16_t *riStart11, *riStart12, *riStart13, *riStart22, *riStart23;
    int numRows11, numRows12, numRows13, numRows22, numRows23;
@@ -215,14 +209,12 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
          for(i = 1; i<= PERIOD; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
-         /* If we got here then we found a spaceship! */
+         /* If we got here, then we found a spaceship! */
          #pragma omp critical(printWhileDeepening)
          {
             success(theNode, pRows, startRow - 1, currRow + PERIOD - 1);
          }
-         
          return 1;
-         
       }
       
       getoffsetcount(pRows[currRow - 2 * PERIOD],

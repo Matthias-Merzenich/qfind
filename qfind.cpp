@@ -1,5 +1,5 @@
-/* qfind
-** A spaceship search program by Matthias Merzenich.
+/* qfind --- A spaceship search program by Matthias Merzenich.
+** 
 ** Based on code by David Eppstein, "zdr", Paul Tooke, and Tomas Rokicki.
 ** Thanks also to Aidan F. Pierce and Adam P. Goucher for code and suggestions.
 **
@@ -15,12 +15,6 @@
 
 //#define NOCACHE
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <omp.h>
-#include <time.h>
 #include "common.hpp"
 
 int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
@@ -54,8 +48,8 @@ void makePhases(){
 }
 
 int lookAhead(row *pRows, int a, int pPhase){
-// indices: first number represents vertical offset,
-//          second number represents generational offset
+/* indices: first digit represents vertical offset,      */
+/*          second digit represents generational offset  */
    int ri11, ri12, ri13, ri22, ri23;
    uint16_t *riStart11, *riStart12, *riStart13, *riStart22, *riStart23;
    int numRows11, numRows12, numRows13, numRows22, numRows23;
@@ -223,14 +217,12 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
          for(i = 1; i<= period; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
-         /* If we got here then we found a spaceship! */
+         /* If we got here, then we found a spaceship! */
          #pragma omp critical(printWhileDeepening)
          {
             success(theNode, pRows, startRow - 1, currRow + period - 1);
          }
-         
          return 1;
-         
       }
       
       getoffsetcount(pRows[currRow - 2 * period],

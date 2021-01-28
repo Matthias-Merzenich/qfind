@@ -4,6 +4,13 @@
 ** determined by the presence of the macro QSIMPLE defined in qfind-s.cpp.
 */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <omp.h>
+#include <time.h>
+
 #ifdef QSIMPLE
    #define WHICHPROGRAM qfind-simple
 #else
@@ -13,9 +20,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.2.1 by Matthias Merzenich, 27 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 28 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012701)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021012801)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -692,16 +699,21 @@ safeShift(unsigned long r, int i)
     return (rr>>i);
 }
 
+int sxsAllocRows =  0;
+unsigned long * sxsAllocData;
+unsigned long * sxsAllocData2;
+int oldnrows = 0;
+unsigned long * oldsrows;
+unsigned long * oldssrows;
+
 void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    node c;
    int nrows = 0;
    int skewAmount = 0;
    int swidth;
+   int sxsNeeded;
    int p, i, j, margin;
-   unsigned long *srows, *ssrows, *drows, *ddrows;
-   static unsigned long *oldsrows = 0, *oldssrows = 0;
-   static unsigned long *olddrows = 0, *oldddrows = 0;
-   static int oldnrows = 0;
+   unsigned long *srows, *ssrows;
 
    uint32_t currRow = lastRow;
    int nDeepRows = 0;
@@ -757,9 +769,24 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    }
    
    /* build data structure of rows so we can reduce width etc */
-   srows = (unsigned long*)malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
-   ssrows = (unsigned long*)malloc((nrows+MAXWIDTH+1) * sizeof(unsigned long));
-   drows = (unsigned long*)srows; ddrows = (unsigned long*)ssrows; /* save orig ptr for free() */
+   sxsNeeded = nrows+MAXWIDTH+1;
+   if (!sxsAllocRows)
+   {
+      sxsAllocRows = sxsNeeded;
+      sxsAllocData = (unsigned long*)malloc(sxsAllocRows * sizeof(unsigned long));
+      sxsAllocData2 = (unsigned long*)malloc(sxsAllocRows * sizeof(unsigned long));
+      oldsrows = (unsigned long*)calloc(sxsAllocRows, sizeof(unsigned long));
+      oldssrows = (unsigned long*)calloc(sxsAllocRows, sizeof(unsigned long));
+   }
+   else if (sxsAllocRows < sxsNeeded)
+   {
+      sxsAllocRows = sxsNeeded;
+      sxsAllocData = (unsigned long*)realloc(sxsAllocData, sxsAllocRows * sizeof(unsigned long));
+      sxsAllocData2 = (unsigned long*)realloc(sxsAllocData2, sxsAllocRows * sizeof(unsigned long));
+   }
+   srows  = sxsAllocData;
+   ssrows = sxsAllocData2;
+   
    for (i = 0; i <= nrows+MAXWIDTH; i++) srows[i]=ssrows[i]=0;
    for (i = nrows - 1; i >= 0; i--) {
       row r;
@@ -861,20 +888,16 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
       int different = 0;
       for (i = 0; i < nrows && !different; i++)
          different = (srows[i] != oldsrows[i] || ssrows[i] != oldssrows[i]);
-      if (!different) {
-         free(drows);
-         free(ddrows);
-         return;
-      }
+      if (!different) return;
    }
-   if (olddrows != 0) free(olddrows);
-   if (oldddrows != 0) free(oldddrows);
-   oldsrows = srows;
-   oldssrows = ssrows;
-   olddrows = drows;
-   oldddrows = ddrows;
+   
+   /* replace previous saved rows with new rows */
    oldnrows = nrows;
-
+   oldsrows = (unsigned long*)realloc(oldsrows, sxsAllocRows * sizeof(unsigned long));
+   oldssrows = (unsigned long*)realloc(oldssrows, sxsAllocRows * sizeof(unsigned long));
+   memcpy(oldsrows, sxsAllocData, sxsAllocRows * sizeof(unsigned long));
+   memcpy(oldssrows, sxsAllocData2, sxsAllocRows * sizeof(unsigned long));
+   
    /* output it all */
    printf("\nx = %d, y = %d, rule = %s", swidth - margin, nrows, rule);
    putchar('\n');
