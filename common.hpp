@@ -1058,8 +1058,6 @@ int dumpFlag = 0;    /* Dump status flags, possible values follow */
 #define DUMPFAILURE (2)
 #define DUMPSUCCESS (3)
 
-int dumpandexit = 0;
-
 FILE * openDumpFile()
 {
    FILE * fp;
@@ -1419,7 +1417,7 @@ void usage(){
    printf("         initial row file)\n");
    printf("  -d FF  dumps the search state after each queue compaction using\n");
    printf("         file name prefix FF\n");
-   //printf("  -j FF  dumps the state at start of search using file name prefix FF\n");
+   printf("  -j FF  dumps the state at start of search using file name prefix FF\n");
    printf("  -l FF  loads the search state from the file FF\n");
    printf("  -u     previews partial results from the loaded state\n");
    printf("\n");
@@ -1642,6 +1640,7 @@ void loadInitRows(char * file){
 /*  Check parameters for validity and exit if there are errors  */
 /* ============================================================ */
 
+int dumpAndExit = 0;
 int loadDumpFlag = 0;
 int previewFlag = 0;
 int initRowsFlag = 0;
@@ -1711,8 +1710,6 @@ void checkParams(){
 /* ================================= */
 /*  Parse options and set up search  */
 /* ================================= */
-
-//int dumpandexit = 0;
  
 void parseOptions(int argc, char *argv[]){
    const char *err;
@@ -1804,6 +1801,12 @@ void parseOptions(int argc, char *argv[]){
                dumpRoot = *++argv;
                params[P_CHECKPOINT] = 1;
                break;
+            case 'j': case 'J':
+               --argc;
+               dumpRoot = *++argv;
+               params[P_CHECKPOINT] = 1;  /* dump and exit enables dumping */
+               dumpAndExit = 1;
+               break;
             case 'e': case 'E':
                --argc;
                initRows = *++argv;
@@ -1872,6 +1875,18 @@ void searchSetup(){
    
    if(previewFlag){
       preview(1);
+      exit(0);
+   }
+   
+   if(dumpAndExit){
+      if(!loadDumpFlag)
+         qEnd = qTail;
+      else
+         doCompactPart1();
+      dumpFlag = DUMPPENDING;
+      dumpState();
+      if(dumpFlag == DUMPSUCCESS) printf("State dumped to %s\n",dumpFile);
+      else fprintf(stderr, "Error: dump failed.\n");
       exit(0);
    }
    
