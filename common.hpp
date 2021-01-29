@@ -20,9 +20,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 28 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 29 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012801)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021012901)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -1241,153 +1241,6 @@ void doCompact()
    doCompactPart2();
 }
 
-/* ========================= */
-/*  Preview partial results  */
-/* ========================= */
-
-static void preview(int allPhases) {
-   node i,j,k;
-   int ph;
-
-   for (i = qHead; (i<qTail) && EMPTY(i); i++);
-   for (j = qTail-1; (j>i) && EMPTY(j); j--);
-   if (j<i) return;
-   
-   while (j>=i && !aborting) {
-      if (!EMPTY(j)) {
-         success(j, NULL, 0, 0);
-         if (allPhases == 0) {
-            k=j;
-            for (ph = 1; ph < period; ph++) {
-               k=PARENT(k);
-               success(k, NULL, 0, 0);
-               //success(k);
-            }
-         }
-      }
-      j--;
-   }
-}
-
-/* ========================= */
-/*  Resume from saved state  */
-/* ========================= */
-
-char * loadFile;
-void checkParams();
-
-void loadFail()
-{
-    printf("Load from file %s failed\n",loadFile);
-    exit(1);
-}
-
-signed int loadInt(FILE *fp)
-{
-    signed int v;
-    if (fscanf(fp,"%d\n",&v) != 1) loadFail();
-    return v;
-}
-
-unsigned int loadUInt(FILE *fp)
-{
-    unsigned int v;
-    if (fscanf(fp,"%u\n",&v) != 1) loadFail();
-    return v;
-}
-
-void loadState(char * cmd, char * file)
-{
-   FILE * fp;
-   int i;
-
-   loadFile = file;
-   fp = fopen(loadFile, "r");
-   if (!fp) loadFail();
-   if (loadUInt(fp) != FILEVERSION)
-   {
-      printf("Incompatible file version\n");
-      exit(1);
-   }
-   
-   if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
-   rule = loadRule;
-   
-   if (parseRule(rule, nttable) != 0) {
-      fprintf(stderr, "Failed to parse rule %s\n", rule) ;
-      exit(10) ;
-   }
-   
-   if (fscanf(fp,"%250s\n",loadDumpRoot) != 1) loadFail();
-   dumpRoot = loadDumpRoot;
-   
-   /* Load parameters and set stuff that can be derived from them */
-   for (i = 0; i < NUM_PARAMS; i++)
-      params[i] = loadInt(fp);
-   
-   checkParams();    // Exit if parameters are invalid
-   
-   /* Load / initialise globals */
-   width          = loadInt(fp);
-   period         = loadInt(fp);
-   offset         = loadInt(fp);
-   mode           = (Mode)(loadInt(fp));
-   lastdeep       = loadInt(fp);
-   
-   deepeningAmount = period; /* Currently redundant, since it's recalculated */
-   aborting        = 0;
-   nRowsInState    = period+period;   /* how many rows needed to compute successor graph? */
-
-    /* Allocate space for the data structures */
-   base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
-   rows = (row*)malloc(QSIZE*sizeof(row));
-   if (base == 0 || rows == 0) {
-      printf("Unable to allocate BFS queue!\n");
-      exit(0);
-   }
-   
-   if (hashBits == 0) hash = 0;
-   else {
-      hash = (node*)malloc(HASHSIZE*sizeof(node));
-      if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
-   }
-   
-   /* Load up BFS queue and complete compaction */
-   qHead  = loadUInt(fp);
-   qEnd   = loadUInt(fp);
-   qStart = QSIZE - qEnd;
-   qEnd   = QSIZE;
-   qHead += qStart;
-   if (qStart > QSIZE || qStart < QSIZE/16) {
-      printf("BFS queue is too small for saved state\n");
-      exit(0);
-   }
-   for (i = qStart; i < qEnd; i++)
-      rows[i] = (row) loadUInt(fp);
-   fclose(fp);
-/*
-   printf("qHead:  %d qStart: %d qEnd: %d\n",qHead,qStart,qEnd);
-   printf("rows[0]: %d\n",rows[qStart]);
-   printf("rows[1]: %d\n",rows[qStart+1]);
-   printf("rows[2]: %d\n",rows[qStart+2]);
-   fflush(stdout);
-   exit(0);
-*/
-   doCompactPart2();
-   
-   /* Let the user know that we got this far */
-   printf("State successfully loaded from file %s\n",loadFile);
-   
-   if(!strcmp(cmd,"-p") || !strcmp(cmd,"-P")){
-      preview(1);
-      exit(0);
-   }
-   
-   fflush(stdout);
-   
-   omp_set_num_threads(params[P_NUMTHREADS]);
-}
-
 /* ================= */
 /*  Lookahead cache  */
 /* ================= */
@@ -1525,7 +1378,7 @@ void usage(){
    printf("Usage: \"qfind options\"\n");
    printf("  e.g. \"qfind -r B3/S23 -p 3 -y 1 -w 6 -s even\" searches Life (rule B3/S23)\n");
    printf("  for c/3 orthogonal spaceships with even bilateral symmetry and a\n");
-   printf("  search width of 6 (full width 12).\n");
+   printf("  logical width of 6 (full width 12).\n");
 #else
    printf("Three required parameters, the period, offset, and width, must be\n");
    printf("set within the code before it is compiled. You have compiled with\n");
@@ -1536,13 +1389,13 @@ void usage(){
 #endif
    printf("\n");
    printf("Available options:\n");
-   printf("  -r bNN/sNN searches for spaceships in the specified rule (default: b3/s23)\n");
-   printf("             Non-totalistic rules can be entered using Hensel notation.\n");
+   printf("  -r bNN/sNN  searches for spaceships in the specified rule (default: b3/s23)\n");
+   printf("              Non-totalistic rules can be entered using Hensel notation.\n");
    printf("\n");
 #ifndef QSIMPLE
    printf("  -p NN  searches for spaceships with period NN\n");
    printf("  -y NN  searches for spaceships that travel NN cells every period\n");
-   printf("  -w NN  searches for spaceships with search width NN\n");
+   printf("  -w NN  searches for spaceships with logical width NN\n");
    printf("         (full width depends on symmetry type)\n");
 #endif
    printf("  -s FF  searches for spaceships with symmetry type FF\n");
@@ -1562,78 +1415,18 @@ void usage(){
    printf("  -z     disables output during deepening step\n");
    printf("         (useful for searches that find many spaceships)\n");
    printf("\n");
-   printf("  -d FF  dumps the search state after each queue compaction using\n");
-   printf("         file name prefix FF\n");
-   //printf("  -j FF  dumps the state at start of search using file name prefix FF\n");
    printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
    printf("         (use the companion Golly python script to easily generate the\n");
    printf("         initial row file)\n");
+   printf("  -d FF  dumps the search state after each queue compaction using\n");
+   printf("         file name prefix FF\n");
+   //printf("  -j FF  dumps the state at start of search using file name prefix FF\n");
+   printf("  -l FF  loads the search state from the file FF\n");
+   printf("  -u     previews partial results from the loaded state\n");
    printf("\n");
    printf("  -o     uses naive search order (not recommended)\n");
    printf("\n");
    printf("  --help  prints usage instructions and exits\n");
-   printf("\n");
-   printf("\"qfind command FF\" reloads the state from the specified file FF\n");
-   printf("and performs the command. Available commands: \n");
-   printf("  -r FF  resumes search from file FF\n");
-   printf("  -p FF  previews partial results from file FF\n");
-}
-
-/* ============================================================ */
-/*  Check parameters for validity and exit if there are errors  */
-/* ============================================================ */
-
-void checkParams(){
-   int exitFlag = 0;
-   
-   /* Errors */
-#ifdef QSIMPLE
-   if(gcd(PERIOD,OFFSET) > 1){
-      fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
-      exitFlag = 1;
-   }
-#else
-   if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
-      fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
-      exitFlag = 1;
-   }
-   if(params[P_PERIOD] > MAXPERIOD){
-      fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
-      exitFlag = 1;
-   }
-   if(params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
-      exitFlag = 1;
-   }
-   if(params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: photons are not supported.\n");
-      exitFlag = 1;
-   }
-#endif
-   if(params[P_SYMMETRY] == 0){
-      fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
-      exitFlag = 1;
-   }
-   
-   /* Warnings */
-   if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "%s", "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
-   }
-#ifdef NOCACHE
-   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "%s", "Warning: Searches for speeds exceeding c/5 may be faster with NOCACHE undefined.\n");
-   }
-#else
-   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
-      fprintf(stderr, "%s", "Warning: Searches for speeds at or below c/5 may be faster with NOCACHE defined.\n");
-   }
-#endif
-   
-   /* exit if there are errors */
-   if(exitFlag){
-      fprintf(stderr, "\nUse --help for a list of available options.\n");
-      exit(1);
-   }
 }
 
 /* ======================== */
@@ -1660,6 +1453,157 @@ void echoParams(){
 #endif
    if(params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
+}
+
+/* ========================= */
+/*  Preview partial results  */
+/* ========================= */
+
+static void preview(int allPhases) {
+   node i,j,k;
+   int ph;
+
+   for (i = qHead; (i<qTail) && EMPTY(i); i++);
+   for (j = qTail-1; (j>i) && EMPTY(j); j--);
+   if (j<i) return;
+   
+   while (j>=i && !aborting) {
+      if (!EMPTY(j)) {
+         success(j, NULL, 0, 0);
+         if (allPhases == 0) {
+            k=j;
+            for (ph = 1; ph < period; ph++) {
+               k=PARENT(k);
+               success(k, NULL, 0, 0);
+               //success(k);
+            }
+         }
+      }
+      j--;
+   }
+}
+
+/* ============================ */
+/*  Load saved state from file  */
+/* ============================ */
+
+char * loadFile;
+
+void loadFail()
+{
+    printf("Load from file %s failed\n",loadFile);
+    exit(1);
+}
+
+signed int loadInt(FILE *fp)
+{
+    signed int v;
+    if (fscanf(fp,"%d\n",&v) != 1) loadFail();
+    return v;
+}
+
+unsigned int loadUInt(FILE *fp)
+{
+    unsigned int v;
+    if (fscanf(fp,"%u\n",&v) != 1) loadFail();
+    return v;
+}
+
+void loadParams() {
+   FILE * fp;
+   int i;
+   
+   fp = fopen(loadFile, "r");
+   if (!fp) loadFail();
+   if (loadUInt(fp) != FILEVERSION)
+   {
+      printf("Incompatible file version\n");
+      exit(1);
+   }
+   
+   /* Load and parse rule */
+   if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
+   rule = loadRule;
+   
+   if (parseRule(rule, nttable) != 0) {
+      fprintf(stderr, "Failed to parse rule %s\n", rule) ;
+      exit(10) ;
+   }
+   
+   /* Load dump root */
+   if (fscanf(fp,"%250s\n",loadDumpRoot) != 1) loadFail();
+   dumpRoot = loadDumpRoot;
+   
+   /* Load parameters */
+   for (i = 0; i < NUM_PARAMS; i++)
+      params[i] = loadInt(fp);
+}
+
+loadState(){
+   FILE * fp;
+   int i;
+
+//   loadFile = file;
+   fp = fopen(loadFile, "r");
+   if (!fp) loadFail();
+   
+   loadUInt(fp);                                   /* skip file version */
+   fscanf(fp, "%*[^\n]\n");                        /* skip rule */
+   fscanf(fp, "%*[^\n]\n");                        /* skip dump root */
+   for (i = 0; i < NUM_PARAMS; i++) loadInt(fp);   /* skip parameters */
+   
+   /* Load / initialise globals */
+   width          = loadInt(fp);
+   period         = loadInt(fp);
+   offset         = loadInt(fp);
+   mode           = (Mode)(loadInt(fp));
+   lastdeep       = loadInt(fp);
+   
+   deepeningAmount = period; /* Currently redundant, since it's recalculated */
+   aborting        = 0;
+   nRowsInState    = period+period;   /* how many rows needed to compute successor graph? */
+
+    /* Allocate space for the data structures */
+   base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
+   rows = (row*)malloc(QSIZE*sizeof(row));
+   if (base == 0 || rows == 0) {
+      printf("Unable to allocate BFS queue!\n");
+      exit(0);
+   }
+   
+   if (hashBits == 0) hash = 0;
+   else {
+      hash = (node*)malloc(HASHSIZE*sizeof(node));
+      if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
+   }
+   
+   /* Load up BFS queue and complete compaction */
+   qHead  = loadUInt(fp);
+   qEnd   = loadUInt(fp);
+   qStart = QSIZE - qEnd;
+   qEnd   = QSIZE;
+   qHead += qStart;
+   if (qStart > QSIZE || qStart < QSIZE/16) {
+      printf("BFS queue is too small for saved state\n");
+      exit(0);
+   }
+   for (i = qStart; i < qEnd; i++)
+      rows[i] = (row) loadUInt(fp);
+   fclose(fp);
+/*
+   printf("qHead:  %d qStart: %d qEnd: %d\n",qHead,qStart,qEnd);
+   printf("rows[0]: %d\n",rows[qStart]);
+   printf("rows[1]: %d\n",rows[qStart+1]);
+   printf("rows[2]: %d\n",rows[qStart+2]);
+   fflush(stdout);
+   exit(0);
+*/
+   doCompactPart2();
+   
+   /* Let the user know that we got this far */
+   printf("State successfully loaded from file %s\n",loadFile);
+   
+   fflush(stdout);
 }
 
 /* ================================================= */
@@ -1696,32 +1640,88 @@ void loadInitRows(char * file){
    fclose(fp);
 }
 
+/* ============================================================ */
+/*  Check parameters for validity and exit if there are errors  */
+/* ============================================================ */
+
+int loadDumpFlag = 0;
+int previewFlag = 0;
+
+void checkParams(){
+   int exitFlag = 0;
+   
+   /* Errors */
+#ifdef QSIMPLE
+   if(gcd(PERIOD,OFFSET) > 1){
+      fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
+      exitFlag = 1;
+   }
+#else
+   if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
+      fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
+      exitFlag = 1;
+   }
+   if(params[P_PERIOD] > MAXPERIOD){
+      fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
+      exitFlag = 1;
+   }
+   if(params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
+      exitFlag = 1;
+   }
+   if(params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Error: photons are not supported.\n");
+      exitFlag = 1;
+   }
+#endif
+   if(params[P_SYMMETRY] == 0){
+      fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
+      exitFlag = 1;
+   }
+   if(previewFlag && !loadDumpFlag){
+      fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
+      exitFlag = 1;
+   }
+   
+   /* Warnings */
+   if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "%s", "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
+   }
+#ifdef NOCACHE
+   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "%s", "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
+   }
+#else
+   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
+      fprintf(stderr, "%s", "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
+   }
+#endif
+   
+   /* exit if there are errors */
+   if(exitFlag){
+      fprintf(stderr, "\nUse --help for a list of available options.\n");
+      exit(1);
+   }
+}
+
 /* ================================= */
 /*  Parse options and set up search  */
 /* ================================= */
 
 //int dumpandexit = 0;
-int loadDumpFlag = 0;
  
 void parseOptions(int argc, char *argv[]){
    const char *err;
    
-   if(argc == 3 && (!strcmp(argv[1],"-r") ||
-                    !strcmp(argv[1],"-R") ||
-                    !strcmp(argv[1],"-p") ||
-                    !strcmp(argv[1],"-P"))){
-                       loadDumpFlag = 1;
-                       loadState(argv[1],argv[2]);
-   }
-   else while(--argc > 0){
-      if ((*++argv)[0] == '-'){     /* read input parameters */
+   while(--argc > 0){               /* read input parameters */
+      if ((*++argv)[0] == '-'){
          switch ((*argv)[1]){
             case 'r': case 'R':
                --argc;
                rule = *++argv;
                err = parseRule(rule, nttable);
                if (err != 0){
-                  fprintf(stderr, "Error: Failed to parse rule %s\n", *argv);
+                  fprintf(stderr, "Error: failed to parse rule %s\n", *argv);
                   fprintf(stderr, "\nUse --help for a list of available options.\n");
                   exit(10);
                }
@@ -1752,9 +1752,10 @@ void parseOptions(int argc, char *argv[]){
                   case 'g': case 'G':
                      params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
                   default:
-                     fprintf(stderr, "Error: Unrecognized symmetry type %s\n", *argv);
+                     fprintf(stderr, "Error: unrecognized symmetry type %s\n", *argv);
                      fprintf(stderr, "\nUse --help for a list of available options.\n");
                      exit(1);
+                     break;
                }
                break;
             case 'm': case 'M':
@@ -1791,6 +1792,9 @@ void parseOptions(int argc, char *argv[]){
             case 'o': case 'O':
                params[P_REORDER] = 0;
                break;
+            case 'u': case 'U':
+               previewFlag = 1;
+               break;
             case 'd': case 'D':
                --argc;
                dumpRoot = *++argv;
@@ -1801,19 +1805,25 @@ void parseOptions(int argc, char *argv[]){
                initRows = *++argv;
                params[P_INITROWS] = 1;
                break;
+            case 'l': case 'L':
+               --argc;
+               loadFile = *++argv;
+               loadDumpFlag = 1;
+               loadParams();
+               break;
             case '-':
                if(!strcmp(*argv,"--help") || !strcmp(*argv,"--Help")){
                   usage();
                   exit(0);
                }
                else{
-                  fprintf(stderr, "Error: Unrecognized option %s\n", *argv);
+                  fprintf(stderr, "Error: unrecognized option %s\n", *argv);
                   fprintf(stderr, "\nUse --help for a list of available options.\n");
                   exit(1);
                }
                break;
            default:
-              fprintf(stderr, "Error: Unrecognized option %s\n", *argv);
+              fprintf(stderr, "Error: unrecognized option %s\n", *argv);
               fprintf(stderr, "\nUse --help for a list of available options.\n");
               exit(1);
               break;
@@ -1823,9 +1833,10 @@ void parseOptions(int argc, char *argv[]){
 }
 
 void searchSetup(){
-   if(!loadDumpFlag){
-      checkParams();    /* Exit if parameters are invalid */
-      
+   checkParams();  /* Exit if parameters are invalid */
+   
+   if(loadDumpFlag) loadState();
+   else {
       width = params[P_WIDTH];
       period = params[P_PERIOD];
       offset = params[P_OFFSET];
@@ -1849,13 +1860,18 @@ void searchSetup(){
          hash = (node*)malloc(HASHSIZE*sizeof(node));
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
-      
-      omp_set_num_threads(params[P_NUMTHREADS]);
-      
+            
       enqueue(0,0);
       
       if(params[P_INITROWS]) loadInitRows(initRows);
    }
+   
+   if(previewFlag){
+      preview(1);
+      exit(0);
+   }
+   
+   omp_set_num_threads(params[P_NUMTHREADS]);
    
    memlimit = ((long long)params[P_MEMLIMIT]) << 20;
    

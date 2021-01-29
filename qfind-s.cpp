@@ -21,32 +21,32 @@
 #include "common.hpp"
 
 #if WIDTH < 1 || PERIOD < 1 || OFFSET < 1
-   #error Invalid value for PERIOD, OFFSET, or WIDTH.
+   #error "Invalid value for PERIOD, OFFSET, or WIDTH."
 #endif
 
 #if PERIOD > MAXPERIOD
-   #error maximum allowed PERIOD exceeded.
+   #error "maximum allowed PERIOD exceeded."
 #endif
 
 #if OFFSET > PERIOD && PERIOD > 0
-   #error OFFSET cannot exceed PERIOD.
+   #error "OFFSET cannot exceed PERIOD."
 #endif
 
 #if OFFSET == PERIOD && PERIOD > 0
-   #error Photons are not supported.
+   #error "Photons are not supported."
 #endif
 
 #if 2 * OFFSET > PERIOD && PERIOD > 0
-   #warning Searches for speeds exceeding c/2 may not work correctly.
+   #warning "Searches for speeds exceeding c/2 may not work correctly."
 #endif
 
 #ifdef NOCACHE
    #if 5 * OFFSET > PERIOD && PERIOD > 0
-      #warning Searches for speeds exceeding c/5 may be faster with NOCACHE undefined.
+      #warning "Searches for speeds exceeding c/5 may be slower without caching. It is recommended that you recompile with NOCACHE undefined."
    #endif
 #else
    #if 5 * OFFSET <= PERIOD && OFFSET > 0
-      #warning Searches for speeds at or below c/5 may be faster with NOCACHE defined.
+      #warning "Searches for speeds at or below c/5 may be slower with caching. It is recommended that you recompile with NOCACHE defined."
    #endif
 #endif
 
