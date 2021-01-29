@@ -22,7 +22,7 @@
 
 #define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 29 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012902)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021012903)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -45,8 +45,9 @@
 #define P_MEMLIMIT 12
 #define P_CACHEMEM 13
 #define P_PRINTDEEP 14
+#define P_LONGEST 15
 
-#define NUM_PARAMS 15
+#define NUM_PARAMS 16
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -1411,6 +1412,7 @@ void usage(){
 #endif
    printf("  -z     disables output during deepening step\n");
    printf("         (useful for searches that find many spaceships)\n");
+   printf("  -v     Suppresses output of longest partial result at end of search\n");
    printf("\n");
    printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
    printf("         (use the companion Golly python script to easily generate the\n");
@@ -1450,6 +1452,7 @@ void echoParams(){
 #endif
    if(params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
+   if(params[P_LONGEST] == 0)printf("Printing of longest partial result disabled\n");
 }
 
 /* ========================= */
@@ -1790,6 +1793,9 @@ void parseOptions(int argc, char *argv[]){
             case 'z': case 'Z':
                params[P_PRINTDEEP] = 0;
                break;
+            case 'v': case 'V':
+               params[P_LONGEST] = 0;
+               break;
             case 'o': case 'O':
                params[P_REORDER] = 0;
                break;
@@ -1926,6 +1932,8 @@ void searchSetup(){
 void finalReport(){
    printf("Search complete.\n\n");
    printf("Maximum depth reached: %d\n",longest);
-   if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
-   else printf("No partial results found.\n");
+   if(params[P_LONGEST]){
+      if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
+      else printf("No partial results found.\n");
+   }
 }

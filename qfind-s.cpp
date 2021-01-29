@@ -159,7 +159,7 @@ void process(node theNode)
       if (!isVisited(theNode, pRows[currRow]) && lookAhead(pRows, currRow)){
          enqueue(theNode, pRows[currRow]);
          if(currentDepth() > longest){
-            bufferPattern(qTail-1, NULL, 0, 0, 0);
+            if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
             longest = currentDepth();
          }
          if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
@@ -252,6 +252,7 @@ int main(int argc, char *argv[]){
    params[P_CACHEMEM] = 32;
    params[P_MEMLIMIT] = -1;
    params[P_PRINTDEEP] = 1;
+   params[P_LONGEST] = 1;
    
    parseOptions(argc, argv);
    
