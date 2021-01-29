@@ -22,7 +22,7 @@
 
 #define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 29 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012901)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021012902)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -41,13 +41,12 @@
 #define P_HASHBITS 8 
 #define P_DEPTHLIMIT 9 
 #define P_NUMTHREADS 10
-#define P_INITROWS 11
-#define P_MINDEEP 12
-#define P_MEMLIMIT 13
-#define P_CACHEMEM 14
-#define P_PRINTDEEP 15
+#define P_MINDEEP 11
+#define P_MEMLIMIT 12
+#define P_CACHEMEM 13
+#define P_PRINTDEEP 14
 
-#define NUM_PARAMS 16
+#define NUM_PARAMS 15
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -1542,8 +1541,7 @@ void loadParams() {
 loadState(){
    FILE * fp;
    int i;
-
-//   loadFile = file;
+   
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
    
@@ -1646,6 +1644,7 @@ void loadInitRows(char * file){
 
 int loadDumpFlag = 0;
 int previewFlag = 0;
+int initRowsFlag = 0;
 
 void checkParams(){
    int exitFlag = 0;
@@ -1682,18 +1681,22 @@ void checkParams(){
       fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
       exitFlag = 1;
    }
+   if(initRowsFlag && loadDumpFlag){
+      fprintf(stderr, "Error: Initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
+      exitFlag = 1;
+   }
    
    /* Warnings */
    if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "%s", "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
+      fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
    }
 #ifdef NOCACHE
    if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "%s", "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
+      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
    }
 #else
    if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
-      fprintf(stderr, "%s", "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
+      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
    }
 #endif
    
@@ -1702,6 +1705,7 @@ void checkParams(){
       fprintf(stderr, "\nUse --help for a list of available options.\n");
       exit(1);
    }
+   fprintf(stderr, "\n");
 }
 
 /* ================================= */
@@ -1803,7 +1807,7 @@ void parseOptions(int argc, char *argv[]){
             case 'e': case 'E':
                --argc;
                initRows = *++argv;
-               params[P_INITROWS] = 1;
+               initRowsFlag = 1;
                break;
             case 'l': case 'L':
                --argc;
@@ -1863,7 +1867,7 @@ void searchSetup(){
             
       enqueue(0,0);
       
-      if(params[P_INITROWS]) loadInitRows(initRows);
+      if(initRowsFlag) loadInitRows(initRows);
    }
    
    if(previewFlag){

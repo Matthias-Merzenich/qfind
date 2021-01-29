@@ -256,7 +256,6 @@ int main(int argc, char *argv[]){
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
-   params[P_INITROWS] = 0;
    params[P_MINDEEP] = 0;
    params[P_CACHEMEM] = 32;
    params[P_MEMLIMIT] = -1;
