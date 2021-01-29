@@ -261,6 +261,7 @@ int main(int argc, char *argv[]){
    params[P_MEMLIMIT] = -1;
    params[P_PRINTDEEP] = 1;
    params[P_LONGEST] = 1;
+   params[P_LASTDEEP] = 0;
    
    parseOptions(argc, argv);
    

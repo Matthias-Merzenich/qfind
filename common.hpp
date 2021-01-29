@@ -22,7 +22,7 @@
 
 #define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 29 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012903)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021012904)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -46,8 +46,9 @@
 #define P_CACHEMEM 13
 #define P_PRINTDEEP 14
 #define P_LONGEST 15
+#define P_LASTDEEP 16
 
-#define NUM_PARAMS 16
+#define NUM_PARAMS 17
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -62,7 +63,6 @@ char *initRows;
 int params[NUM_PARAMS];
 int width;
 int deepeningAmount;
-int lastdeep;
 int nRowsInState;
 int phase;
 
@@ -149,7 +149,7 @@ struct cacheentry **cache;
 #define PARENT(i) (base[(i)>>BASEBITS]+ROFFSET(i))
 #define FIRSTBASE(i) (((i) & ((1<<BASEBITS) - 1)) == 0)
 
-#define MINDEEP  ((params[P_MINDEEP]>0) ? params[P_MINDEEP] : period)
+#define MINDEEP ((params[P_MINDEEP]>0) ? params[P_MINDEEP] : period)
 
 int gcd(int a, int b) {
    if (a > b) return gcd(b,a);
@@ -1089,7 +1089,6 @@ void dumpState()
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
    fprintf(fp,"%d\n",mode);
-   fprintf(fp,"%d\n",lastdeep);
 
    fprintf(fp,"%u\n",qHead-qStart);
    fprintf(fp,"%u\n",qEnd-qStart);
@@ -1281,10 +1280,10 @@ static void deepen(){
 #endif
    printf("Queue full");
    i = currentDepth();
-   if (i >= lastdeep) deepeningAmount = MINDEEP;
-   else deepeningAmount = lastdeep + MINDEEP - i;   /* go at least MINDEEP deeper */
+   if (i >= params[P_LASTDEEP]) deepeningAmount = MINDEEP;
+   else deepeningAmount = params[P_LASTDEEP] + MINDEEP - i;   /* go at least MINDEEP deeper */
 
-   lastdeep = i + deepeningAmount;
+   params[P_LASTDEEP] = i + deepeningAmount;
 
    /* start report of what's happening */
    printf(", depth %ld, deepening %d, ", (long int) i, deepeningAmount);
@@ -1401,6 +1400,8 @@ void usage(){
    printf("\n");
    printf("  -t NN  runs search using NN threads during deepening step (default: 1)\n");
    printf("  -i NN  sets minimum deepening increment to NN (default: period)\n");
+   printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
+   printf("         (total depth includes depth of BFS queue)\n");
    printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("         Use -h 0 to disable duplicate elimination.\n");
@@ -1475,12 +1476,83 @@ static void preview(int allPhases) {
             for (ph = 1; ph < period; ph++) {
                k=PARENT(k);
                success(k, NULL, 0, 0);
-               //success(k);
             }
          }
       }
       j--;
    }
+}
+
+/* ============================================================ */
+/*  Check parameters for validity and exit if there are errors  */
+/* ============================================================ */
+
+int dumpAndExit = 0;
+int loadDumpFlag = 0;
+int previewFlag = 0;
+int initRowsFlag = 0;
+int newLastDeep = 0;
+
+void checkParams(){
+   int exitFlag = 0;
+   
+   /* Errors */
+#ifdef QSIMPLE
+   if(gcd(PERIOD,OFFSET) > 1){
+      fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
+      exitFlag = 1;
+   }
+#else
+   if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
+      fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
+      exitFlag = 1;
+   }
+   if(params[P_PERIOD] > MAXPERIOD){
+      fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
+      exitFlag = 1;
+   }
+   if(params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
+      exitFlag = 1;
+   }
+   if(params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Error: photons are not supported.\n");
+      exitFlag = 1;
+   }
+#endif
+   if(params[P_SYMMETRY] == 0){
+      fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
+      exitFlag = 1;
+   }
+   if(previewFlag && !loadDumpFlag){
+      fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
+      exitFlag = 1;
+   }
+   if(initRowsFlag && loadDumpFlag){
+      fprintf(stderr, "Error: Initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
+      exitFlag = 1;
+   }
+   
+   /* Warnings */
+   if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
+   }
+#ifdef NOCACHE
+   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
+   }
+#else
+   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
+      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
+   }
+#endif
+   
+   /* exit if there are errors */
+   if(exitFlag){
+      fprintf(stderr, "\nUse --help for a list of available options.\n");
+      exit(1);
+   }
+   fprintf(stderr, "\n");
 }
 
 /* ============================ */
@@ -1512,6 +1584,9 @@ unsigned int loadUInt(FILE *fp)
 void loadParams() {
    FILE * fp;
    int i;
+   
+   /* reset flag to prevent modification of params[P_LASTDEEP] at start of search */
+   newLastDeep = 0;
    
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
@@ -1556,7 +1631,6 @@ loadState(){
    period         = loadInt(fp);
    offset         = loadInt(fp);
    mode           = (Mode)(loadInt(fp));
-   lastdeep       = loadInt(fp);
    
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    aborting        = 0;
@@ -1639,77 +1713,6 @@ void loadInitRows(char * file){
    fclose(fp);
 }
 
-/* ============================================================ */
-/*  Check parameters for validity and exit if there are errors  */
-/* ============================================================ */
-
-int dumpAndExit = 0;
-int loadDumpFlag = 0;
-int previewFlag = 0;
-int initRowsFlag = 0;
-
-void checkParams(){
-   int exitFlag = 0;
-   
-   /* Errors */
-#ifdef QSIMPLE
-   if(gcd(PERIOD,OFFSET) > 1){
-      fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
-      exitFlag = 1;
-   }
-#else
-   if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
-      fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
-      exitFlag = 1;
-   }
-   if(params[P_PERIOD] > MAXPERIOD){
-      fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
-      exitFlag = 1;
-   }
-   if(params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
-      exitFlag = 1;
-   }
-   if(params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: photons are not supported.\n");
-      exitFlag = 1;
-   }
-#endif
-   if(params[P_SYMMETRY] == 0){
-      fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
-      exitFlag = 1;
-   }
-   if(previewFlag && !loadDumpFlag){
-      fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
-      exitFlag = 1;
-   }
-   if(initRowsFlag && loadDumpFlag){
-      fprintf(stderr, "Error: Initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
-      exitFlag = 1;
-   }
-   
-   /* Warnings */
-   if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
-   }
-#ifdef NOCACHE
-   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
-   }
-#else
-   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
-      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
-   }
-#endif
-   
-   /* exit if there are errors */
-   if(exitFlag){
-      fprintf(stderr, "\nUse --help for a list of available options.\n");
-      exit(1);
-   }
-   fprintf(stderr, "\n");
-}
-
 /* ================================= */
 /*  Parse options and set up search  */
 /* ================================= */
@@ -1765,6 +1768,11 @@ void parseOptions(int argc, char *argv[]){
             case 'm': case 'M':
                --argc;
                sscanf(*++argv, "%d", &params[P_MEMLIMIT]);
+               break;
+            case 'n': case 'N':
+               --argc;
+               sscanf(*++argv, "%d", &params[P_LASTDEEP]);
+               newLastDeep = 1;
                break;
             case 'c': case 'C':
                --argc;
@@ -1854,7 +1862,6 @@ void searchSetup(){
       period = params[P_PERIOD];
       offset = params[P_OFFSET];
       deepeningAmount = period;
-      lastdeep = 0;
       hashPhase = (gcd(period,offset)>1);
       
       nRowsInState = period+period;
@@ -1882,6 +1889,12 @@ void searchSetup(){
    if(previewFlag){
       preview(1);
       exit(0);
+   }
+   
+   /* correction of params[P_LASTDEEP] after modification */
+   if(newLastDeep){
+      params[P_LASTDEEP] -= MINDEEP;
+      if(params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
    }
    
    if(dumpAndExit){
