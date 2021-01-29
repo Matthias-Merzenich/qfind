@@ -20,7 +20,7 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.3b by Matthias Merzenich, 29 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.3 by Matthias Merzenich, 29 January 2021"
 
 #define FILEVERSION ((unsigned long) 2021012904)  /* yyyymmddnn */
 

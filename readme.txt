@@ -1,10 +1,12 @@
-qfind v1.2.1
+qfind v1.3
 
 qfind is a spaceship search program for Conway's Game of Life and other
-Life-like cellular automata.  It is based on David Eppstein's gfind and
-zdr's zfind search programs.
+Life-like cellular automata written by Matthias Merzenich.  It is based on
+David Eppstein's gfind and zdr's zfind search programs.  Additional code and
+suggestions were provided by Paul Tooke, Tomas Rokicki, Aidan F. Pierce, and
+Adam P. Goucher.
 
-Three scripts are provided:
+Three scripts are included:
 
 qfind.cpp:
   The main search program.  This program uses OpenMP to achieve rather
@@ -23,8 +25,8 @@ qfind-s.cpp
 
 get-rows.py:
   This is a Golly Python script to help with extending partial results.
-  Usage instructions are provided in the source code.  This script
-  requires the Life application Golly.
+  Usage instructions are provided in the source code.  This script requires
+  the Life application Golly.
 
 -----------------------------------------------------------------------------
 Version History:
@@ -52,6 +54,13 @@ Version History:
       Add some simple checks for parameter validity
    1.2.1, 27 January 2021
       Put functions common to both qfind and qfind-s into a header file
+   1.3, 29 January 2021
+      Add optional longest partial output at end of search
+      Make loading from saved state behave like other options
+      Add dump-and-exit option
+      Add option to choose depth level of first deepening step
+      Replace initial rows parameter with dedicated global variable
+      Fix bug with free() of non-malloced pointer in success()
 
 -----------------------------------------------------------------------------
 Matthias Merzenich
