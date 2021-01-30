@@ -1645,6 +1645,8 @@ loadState(){
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    aborting        = 0;
    nRowsInState    = period+period;   /* how many rows needed to compute successor graph? */
+   
+   params[P_DEPTHLIMIT] = DEFAULT_DEPTHLIMIT;
 
     /* Allocate space for the data structures */
    base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
