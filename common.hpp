@@ -20,9 +20,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.3 by Matthias Merzenich, 29 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.4b by Matthias Merzenich, 30 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021012904)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021013001)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -47,8 +47,9 @@
 #define P_PRINTDEEP 14
 #define P_LONGEST 15
 #define P_LASTDEEP 16
+#define P_NUMSHIPS 17
 
-#define NUM_PARAMS 17
+#define NUM_PARAMS 18
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -71,8 +72,8 @@ int period;
 int offset;
 
 int aborting;
-int nFound;
-int longest = 0;        /* Stores length of current longest partial result */
+int numFound = 0;       /* number of spaceships found so far */
+int longest = 0;        /* length of current longest partial result */
 
 enum Mode {
    asymmetric,          /* basic orthogonal or diagonal pattern */
@@ -707,7 +708,7 @@ unsigned long * oldsrows;
 unsigned long * oldssrows;
 
 /* Buffers RLE into patternBuf; returns 1 if pattern successfully buffered */ 
-int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDuplicate){
+int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printExpected){
    node c;
    int nrows = 0;
    int skewAmount = 0;
@@ -723,7 +724,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDu
    if(pRows != NULL){
       while(pRows[currRow] == 0){
          if(currRow == 0){
-            if(!checkDuplicate) return 0;
+            if(!printExpected) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
             return 0;
@@ -747,7 +748,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDu
       while (ROW(b) == 0) {
          b = PARENT(b);
          if (b == 0) {
-            if(!checkDuplicate) return 0;
+            if(!printExpected) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
             return 0;
@@ -758,7 +759,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDu
    
    for (p = 0; p < period-1; p++) b = PARENT(b);
    if (b == 0) {
-      if(!checkDuplicate) return 0;
+      if(!printExpected) return 0;
       printf("Success called on search root!\n");
       aborting = 1;
       return 0;
@@ -889,7 +890,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDu
    margin = 0;
 
    /* make sure we didn't just output the exact same pattern (happens a lot for puffer) */
-   if(checkDuplicate){
+   if(printExpected){
       if (nrows == oldnrows) {
          int different = 0;
          for (i = 0; i < nrows && !different; i++)
@@ -918,7 +919,12 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int checkDu
    bufRLE('\0');
    sprintf(patternBuf+strlen(patternBuf),"\n");
    
-   //if (++nFound >= findLimit) aborting = 1;
+   if(printExpected){
+      numFound++;
+      if(params[P_NUMSHIPS] > 0){
+         if(--params[P_NUMSHIPS] == 0) aborting = 3;  /* use 3 to flag that we reached ship limit */
+      }
+   }
    
    return 1;
 }
@@ -1215,7 +1221,7 @@ void doCompactPart2()
          while (EMPTY(y)) y++;
       }
       enqueue(y,ROW(x));
-      if (aborting) return;
+      //if (aborting) return;    /* why is this here? value of aborting is not changed by enqueue(). */
       if (qHead == x) qHead = qTail - 1;
       setVisited(qTail - 1);
    }
@@ -1402,6 +1408,7 @@ void usage(){
    printf("  -i NN  sets minimum deepening increment to NN (default: period)\n");
    printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
    printf("         (total depth includes depth of BFS queue)\n");
+   printf("  -f NN  stops search if NN ships are found (default: no limit)\n");
    printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("         Use -h 0 to disable duplicate elimination.\n");
@@ -1716,7 +1723,33 @@ void loadInitRows(char * file){
 /* ================================= */
 /*  Parse options and set up search  */
 /* ================================= */
- 
+
+void setDefaultParams(){
+#ifdef QSIMPLE
+   params[P_WIDTH] = WIDTH;
+   params[P_PERIOD] = PERIOD;
+   params[P_OFFSET] = OFFSET;
+#else
+   params[P_WIDTH] = 0;
+   params[P_PERIOD] = 0;
+   params[P_OFFSET] = 0;
+#endif
+   params[P_SYMMETRY] = 0;
+   params[P_REORDER] = 1;
+   params[P_CHECKPOINT] = 0;
+   params[P_BASEBITS] = 4;
+   params[P_QBITS] = QBITS;
+   params[P_HASHBITS] = HASHBITS;
+   params[P_NUMTHREADS] = 1;
+   params[P_MINDEEP] = 0;
+   params[P_CACHEMEM] = 32;
+   params[P_MEMLIMIT] = -1;
+   params[P_PRINTDEEP] = 1;
+   params[P_LONGEST] = 1;
+   params[P_LASTDEEP] = 0;
+   params[P_NUMSHIPS] = 0;
+}
+
 void parseOptions(int argc, char *argv[]){
    const char *err;
    
@@ -1797,6 +1830,10 @@ void parseOptions(int argc, char *argv[]){
             case 't': case 'T':
                --argc;
                sscanf(*++argv, "%d", &params[P_NUMTHREADS]);
+               break;
+            case 'f': case 'F':
+               --argc;
+               sscanf(*++argv, "%d", &params[P_NUMSHIPS]);
                break;
             case 'z': case 'Z':
                params[P_PRINTDEEP] = 0;
@@ -1944,8 +1981,10 @@ void searchSetup(){
 
 void finalReport(){
    printf("Search complete.\n\n");
+   
+   printf("%d spaceship%s found.\n",numFound,(numFound == 1) ? "" : "s");
    printf("Maximum depth reached: %d\n",longest);
-   if(params[P_LONGEST]){
+   if(params[P_LONGEST] && aborting != 3){ /* aborting == 3 means we reached ship limit */
       if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
       else printf("No partial results found.\n");
    }

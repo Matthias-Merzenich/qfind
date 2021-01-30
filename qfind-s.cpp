@@ -238,22 +238,7 @@ int main(int argc, char *argv[]){
    
    parseRule(rule, nttable); /* pick up default rule */
    
-   params[P_WIDTH] = WIDTH;
-   params[P_PERIOD] = PERIOD;
-   params[P_OFFSET] = OFFSET;
-   params[P_SYMMETRY] = 0;
-   params[P_REORDER] = 1;
-   params[P_CHECKPOINT] = 0;
-   params[P_BASEBITS] = 4;
-   params[P_QBITS] = QBITS;
-   params[P_HASHBITS] = HASHBITS;
-   params[P_NUMTHREADS] = 1;
-   params[P_MINDEEP] = 0;
-   params[P_CACHEMEM] = 32;
-   params[P_MEMLIMIT] = -1;
-   params[P_PRINTDEEP] = 1;
-   params[P_LONGEST] = 1;
-   params[P_LASTDEEP] = 0;
+   setDefaultParams();
    
    parseOptions(argc, argv);
    
