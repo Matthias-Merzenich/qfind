@@ -236,8 +236,6 @@ int main(int argc, char *argv[]){
       printf(" %s", argv[i]);
    printf("\n\n");
    
-   parseRule(rule, nttable); /* pick up default rule */
-   
    setDefaultParams();
    
    parseOptions(argc, argv);

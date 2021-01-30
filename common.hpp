@@ -1502,8 +1502,15 @@ int newLastDeep = 0;
 
 void checkParams(){
    int exitFlag = 0;
+   const char *ruleError;
    
    /* Errors */
+   ruleError = parseRule(rule, nttable);
+   if (ruleError != 0){
+      fprintf(stderr, "Error: failed to parse rule %s\n", rule);
+      fprintf(stderr, "       %s\n", ruleError);
+      exitFlag = 1;
+   }
 #ifdef QSIMPLE
    if(gcd(PERIOD,OFFSET) > 1){
       fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
@@ -1603,14 +1610,9 @@ void loadParams() {
       exit(1);
    }
    
-   /* Load and parse rule */
+   /* Load rule */
    if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
    rule = loadRule;
-   
-   if (parseRule(rule, nttable) != 0) {
-      fprintf(stderr, "Failed to parse rule %s\n", rule) ;
-      exit(10) ;
-   }
    
    /* Load dump root */
    if (fscanf(fp,"%250s\n",loadDumpRoot) != 1) loadFail();
@@ -1751,20 +1753,12 @@ void setDefaultParams(){
 }
 
 void parseOptions(int argc, char *argv[]){
-   const char *err;
-   
    while(--argc > 0){               /* read input parameters */
       if ((*++argv)[0] == '-'){
          switch ((*argv)[1]){
             case 'r': case 'R':
                --argc;
                rule = *++argv;
-               err = parseRule(rule, nttable);
-               if (err != 0){
-                  fprintf(stderr, "Error: failed to parse rule %s\n", *argv);
-                  fprintf(stderr, "\nUse --help for a list of available options.\n");
-                  exit(10);
-               }
                break;
 #ifndef QSIMPLE
             case 'p': case 'P':
