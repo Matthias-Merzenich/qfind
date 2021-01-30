@@ -1376,6 +1376,7 @@ static void breadthFirst()
 /*  Print usage instructions  */
 /* ========================== */
 
+/* Note: currently reserving -v for potentially editing an array of extra variables */
 void usage(){
 #ifndef QSIMPLE
    printf("Usage: \"qfind options\"\n");
@@ -1420,7 +1421,7 @@ void usage(){
 #endif
    printf("  -z     disables output during deepening step\n");
    printf("         (useful for searches that find many spaceships)\n");
-   printf("  -v     Suppresses output of longest partial result at end of search\n");
+   printf("  -a     Suppresses output of longest partial result at end of search\n");
    printf("\n");
    printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
    printf("         (use the companion Golly python script to easily generate the\n");
@@ -1752,6 +1753,7 @@ void setDefaultParams(){
    params[P_NUMSHIPS] = 0;
 }
 
+/* Note: currently reserving -v for potentially editing an array of extra variables */
 void parseOptions(int argc, char *argv[]){
    while(--argc > 0){               /* read input parameters */
       if ((*++argv)[0] == '-'){
@@ -1832,7 +1834,7 @@ void parseOptions(int argc, char *argv[]){
             case 'z': case 'Z':
                params[P_PRINTDEEP] = 0;
                break;
-            case 'v': case 'V':
+            case 'a': case 'A':
                params[P_LONGEST] = 0;
                break;
             case 'o': case 'O':
