@@ -67,6 +67,7 @@ Version History:
       Change longest partial suppression option from -v to -a
       Fix bug when changing queue size after loading state
       Fix bug due to non-initialization of variables
+      Fix bug due to missing return type of loadState()
 
 ------------------------------------------------------------------------------
 Matthias Merzenich

@@ -1625,7 +1625,7 @@ void loadParams() {
       params[i] = loadInt(fp);
 }
 
-loadState(){
+void loadState(){
    FILE * fp;
    int i;
    
