@@ -1909,13 +1909,16 @@ void searchSetup(){
          printf("Unable to allocate BFS queue!\n");
          exit(0);
       }
-   
+      
       if (hashBits == 0) hash = 0;
       else {
          hash = (node*)malloc(HASHSIZE*sizeof(node));
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
-            
+      
+      resetQ();
+      resetHash();
+      
       enqueue(0,0);
       
       if(initRowsFlag) loadInitRows(initRows);
