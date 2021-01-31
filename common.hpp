@@ -20,9 +20,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.4b by Matthias Merzenich, 30 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.4b by Matthias Merzenich, 31 January 2021"
 
-#define FILEVERSION ((unsigned long) 2021013001)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021013101)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -1158,7 +1158,7 @@ void doCompactPart1()
       /* invariants: everything after y is still active.
                      everything after x points to something after y.
                      x is nonempty and points to y or something before y.
-                     so, if x doesnt point to y, y must be unused and can be removed. */
+                     so, if x doesn't point to y, y must be unused and can be removed. */
       if (!EMPTY(y)) {
          if (y > PARENT(x)) rows[y] = -1;
          else while (EMPTY(x) || PARENT(x) == y) x--;
@@ -1188,7 +1188,7 @@ void doCompactPart1()
       
       For this phase, y points to the current item to be repacked, and x points
       to the next free place to pack an item.
-    */
+   */
    x = y = qTail-1;
    for (;;) {
       if (qHead == y) qHead = x;
@@ -1196,14 +1196,14 @@ void doCompactPart1()
          rows[x] = rows[y];
          x--;
       }
-      if (y-- == 0) break;   /* circumlocution for while (y >= 0) because x is unsigned */
+      if (y-- == 0) break;    /* circumlocution for while (y >= 0) because x is unsigned */
    }
-    qStart = ++x;    /* mark start of queue */
+   qStart = ++x;     /* mark start of queue */
 }
 
 void doCompactPart2()
 {
-    node x,y;
+   node x,y;
 
    /*
       Make a pass forwards converting parent bits back to parent pointers.
@@ -1428,8 +1428,9 @@ void usage(){
    printf("         initial row file)\n");
    printf("  -d FF  dumps the search state after each queue compaction using\n");
    printf("         file name prefix FF\n");
-   printf("  -j FF  dumps the state at start of search using file name prefix FF\n");
    printf("  -l FF  loads the search state from the file FF\n");
+   printf("  -j NN  splits the search state into at most NN files\n");
+   printf("         (uses the file name prefix defined by -d option\n");
    printf("  -u     previews partial results from the loaded state\n");
    printf("\n");
    printf("  -o     uses naive search order (not recommended)\n");
@@ -1495,7 +1496,7 @@ static void preview(int allPhases) {
 /*  Check parameters for validity and exit if there are errors  */
 /* ============================================================ */
 
-int dumpAndExit = 0;
+int splitNum = 0;
 int loadDumpFlag = 0;
 int previewFlag = 0;
 int initRowsFlag = 0;
@@ -1685,8 +1686,8 @@ loadState(){
 */
    doCompactPart2();
    
-   /* Let the user know that we got this far */
-   printf("State successfully loaded from file %s\n",loadFile);
+   /* Let the user know that we got this far (suppress if splitting) */
+   if(!splitNum) printf("State successfully loaded from file %s\n",loadFile);
    
    fflush(stdout);
 }
@@ -1852,9 +1853,8 @@ void parseOptions(int argc, char *argv[]){
                break;
             case 'j': case 'J':
                --argc;
-               dumpRoot = *++argv;
-               params[P_CHECKPOINT] = 1;  /* dump and exit enables dumping */
-               dumpAndExit = 1;
+               sscanf(*++argv, "%d", &splitNum);
+               if(splitNum < 0) splitNum = 0;
                break;
             case 'e': case 'E':
                --argc;
@@ -1935,15 +1935,108 @@ void searchSetup(){
       if(params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
    }
    
-   if(dumpAndExit){
-      if(!loadDumpFlag)
-         qEnd = qTail;
-      else
-         doCompactPart1();
-      dumpFlag = DUMPPENDING;
-      dumpState();
-      if(dumpFlag == DUMPSUCCESS) printf("State dumped to %s\n",dumpFile);
-      else fprintf(stderr, "Error: dump failed.\n");
+   /* split queue across multiple files */
+   if(splitNum > 0){
+      node x;
+      int firstDumpNum = 0;
+      int totalNodes = 0;
+      
+      echoParams();
+      printf("\n");
+      
+      if(!loadDumpFlag || qHead == 0 || splitNum == 1){
+         dumpFlag = DUMPPENDING;
+         if(qHead == 0){      /* can't use doCompact() here, because it tries to access rows[-1] */
+            qStart = qHead;
+            qEnd = qTail;
+            dumpState();
+         }
+         else doCompact();
+         if(dumpFlag == DUMPSUCCESS){
+            printf("State dumped to %s\n",dumpFile);
+            exit(0);
+         }
+         else{
+            fprintf(stderr, "Error: dump failed.\n");
+            exit(1);
+         }
+      }
+      
+      if(splitNum >= 100000){
+         fprintf(stderr, "Warning: queue cannot be split into more than 99999 files.\n");
+         splitNum = 99999;
+      }
+      
+      /* count nodes in queue */
+      for(x = qHead; x < qTail; x++){
+         if(!EMPTY(x)) totalNodes++;
+      }
+      
+      /* nodes per file is rounded up */
+      int nodesPerFile = (totalNodes - 1) / splitNum + 1;
+      
+      printf("Splitting search state with %d queue nodes per file\n",nodesPerFile);
+      
+      /* save qHead and qTail, as creating the pieces will change their values */
+      node fixedQHead = qHead;
+      node fixedQTail = qTail;
+      
+      /* delete the queue; we will reload it as needed */
+      free(base);
+      free(rows);
+      free(hash);
+      
+      node currNode = fixedQHead;
+      
+      while(currNode < fixedQTail){
+         
+         /* load the queue */
+         loadState();
+         
+         /* empty everything before currNode */
+         for(x = fixedQHead; x < currNode; x++) MAKEEMPTY(x);
+         
+         /* skip the specified number of nonempty nodes */
+         int i = 0;
+         while(i < nodesPerFile && x < fixedQTail){
+            if(!EMPTY(x))
+               i++;
+            x++;
+         }
+         
+         /* update currNode */
+         currNode = x;
+         
+         /* empty everything after specified nonempty nodes */
+         while(x < fixedQTail){
+            MAKEEMPTY(x);
+            x++;
+         }
+         
+         /* save the piece */
+         dumpFlag = DUMPPENDING;
+         doCompact();
+         
+         if(!firstDumpNum) firstDumpNum = dumpNum - 1;
+         
+         if (dumpFlag != DUMPSUCCESS){
+            printf("Failed to save %s\n",dumpFile);
+            exit(1);
+         }
+         
+         if(dumpNum >= 100000){
+            fprintf(stderr, "Error: dump file number limit reached.\n");
+            fprintf(stderr, "       Try splitting the queue in a new directory.\n");
+            exit(1);
+         }
+         
+         /* prevent memory leak */
+         free(base);
+         free(rows);
+         free(hash);
+      }
+      
+      printf("Saved pieces in files %s%05d to %s\n",dumpRoot,firstDumpNum,dumpFile);
       exit(0);
    }
    
