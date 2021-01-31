@@ -1,4 +1,4 @@
-qfind v1.3
+qfind v1.4
 
 qfind is a spaceship search program for Conway's Game of Life and other
 Life-like cellular automata written by Matthias Merzenich.  It is based on
