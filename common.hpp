@@ -20,7 +20,7 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.4b by Matthias Merzenich, 31 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v1.4 by Matthias Merzenich, 31 January 2021"
 
 #define FILEVERSION ((unsigned long) 2021013101)  /* yyyymmddnn */
 
@@ -76,7 +76,7 @@ int numFound = 0;       /* number of spaceships found so far */
 int longest = 0;        /* length of current longest partial result */
 
 enum Mode {
-   asymmetric,          /* basic orthogonal or diagonal pattern */
+   asymmetric,          /* basic orthogonal pattern */
    odd, even,           /* orthogonal with bilateral symmetry */
    gutter,              /* orthogonal bilateral symmetry with empty column in middle */
 } mode;

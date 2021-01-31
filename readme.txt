@@ -9,26 +9,26 @@ Adam P. Goucher.
 Three scripts are included:
 
 qfind.cpp:
-  The main search program.  This program uses OpenMP to achieve rather
-  basic parallelization.  It should be compiled with the OpenMP flag
-  for your compiler.  I use
-
-  g++ qfind.cpp -O3 -fopenmp -march=native -o qfind
+   The main search program.  This program uses OpenMP to achieve rather
+   basic parallelization.  It should be compiled with the OpenMP flag
+   for your compiler.  I use
+   
+   g++ qfind.cpp -O3 -fopenmp -march=native -o qfind
 
 
 qfind-s.cpp
-  A simplified version of qfind with fewer features that is slightly faster.
-  You must change the period, offset, and width of the desired search in the
-  code before compiling.  This version only allows gcd(period,offset) = 1.
-  Compilation is otherwise the same.
+   A simplified version of qfind with fewer features that is slightly faster.
+   You must change the period, offset, and width of the desired search in the
+   code before compiling.  This version only allows gcd(period,offset) = 1.
+   Compilation is otherwise the same.
 
 
 get-rows.py:
-  This is a Golly Python script to help with extending partial results.
-  Usage instructions are provided in the source code.  This script requires
-  the Life application Golly.
+   This is a Golly Python script to help with extending partial results.
+   Usage instructions are provided in the source code.  This script requires
+   the Life application Golly.
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 Version History:
    0.1, 19 June 2017
       Initial release
@@ -50,7 +50,7 @@ Version History:
       Add option to disable output during deepening step
    1.2, 24 January 2021
       Make options POSIX-like
-      Add option to specify dump file prefix
+      Add option to specify dump file prefix (replaces -d)
       Add some simple checks for parameter validity
    1.2.1, 27 January 2021
       Put functions common to both qfind and qfind-s into a header file
@@ -61,6 +61,12 @@ Version History:
       Add option to choose depth level of first deepening step
       Replace initial rows parameter with dedicated global variable
       Fix bug with free() of non-malloced pointer in success()
+   1.4, 31 January 2021
+      Add option to set maximum number of ships in output
+      Add option to split the search state (replaces dump-and-exit)
+      Change longest partial suppression option from -v to -a
+      Fix bug when changing queue size after loading state
+      Fix bug due to non-initialization of variables
 
------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 Matthias Merzenich
