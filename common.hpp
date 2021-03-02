@@ -20,14 +20,14 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v1.4 by Matthias Merzenich, 31 January 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v2.0 by Matthias Merzenich, 2 March 2021"
 
-#define FILEVERSION ((unsigned long) 2021013101)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021030201)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
-#define QBITS 23
-#define HASHBITS 21
+#define QBITS 20
+#define HASHBITS 20
 #define DEFAULT_DEPTHLIMIT (qBits-3)
 
 #define P_WIDTH 0
@@ -48,8 +48,9 @@
 #define P_LONGEST 15
 #define P_LASTDEEP 16
 #define P_NUMSHIPS 17
+#define P_MINEXTENSION 18
 
-#define NUM_PARAMS 18
+#define NUM_PARAMS 19
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -68,7 +69,6 @@ int nRowsInState;
 int phase;
 
 int period;
-
 int offset;
 
 int aborting;
@@ -102,6 +102,10 @@ uint32_t *gcount ;
 uint16_t *gRows;
 long long memusage = 0;
 long long memlimit = 0;
+
+row **deepRows;
+uint32_t *deepRowIndices;
+uint32_t deepQHead, deepQTail, oldDeepQHead;
 
 #ifndef NOCACHE
 long long cachesize ;
@@ -1001,7 +1005,10 @@ int peekPhase(node i) {
 
 /* Test queue status */
 static inline int qIsEmpty() {
-   while (qHead < qTail && EMPTY(qHead)) qHead++;
+   while (qHead < qTail && EMPTY(qHead)){
+      ++qHead;
+      ++deepQHead;
+   }
    return (qTail == qHead);
 }
 
@@ -1014,6 +1021,7 @@ void qFull() {
 }
 
 static inline void enqueue(node b, row r) {
+   node tempQTail = qTail;
    node i = qTail++;
    if (i >= QSIZE) qFull();
    else if (FIRSTBASE(i)) {
@@ -1031,15 +1039,24 @@ static inline void enqueue(node b, row r) {
          rows[i] = r;
       } else rows[i] = (o << width) + r;
    }
+   
+   /* update tail of parallel queue, but don't set value */
+   deepQTail += qTail - tempQTail;
+   deepRowIndices[deepQTail] = 0;
 }
 
 static inline node dequeue() {
-   while (qHead < qTail && EMPTY(qHead)) qHead++;
+   oldDeepQHead = deepQHead;  /* Save old parallel queue head for use in process() */
+   while (qHead < qTail && EMPTY(qHead)){
+      ++qHead;
+      ++deepQHead;
+   }
    if (qHead >= nextRephase) {
       queuePhase = (queuePhase+1)%period;
       nextRephase = qTail;
    }
    phase = queuePhase;
+   ++deepQHead;
    return qHead++;
 }
 
@@ -1048,7 +1065,7 @@ static inline void pop() {
    while (qTail > qHead && EMPTY(qTail-1)) qTail--;
 }
 
-void resetQ() { qHead = qTail = 0; }
+void resetQ() { qHead = qTail = 0; deepQHead = deepQTail = 0; }
 
 static inline int qTop() { return qTail - 1; }
 
@@ -1083,23 +1100,42 @@ FILE * openDumpFile()
 void dumpState()
 {
    FILE * fp;
-   int i;
+   uint32_t i,j;
    dumpFlag = DUMPFAILURE;
    if (!(fp = openDumpFile())) return;
    fprintf(fp,"%lu\n",FILEVERSION);
    fprintf(fp,"%s\n",rule);
    fprintf(fp,"%s\n",dumpRoot);
-   for (i = 0; i < NUM_PARAMS; i++)
+   for (i = 0; i < NUM_PARAMS; ++i)
       fprintf(fp,"%d\n",params[i]);
    fprintf(fp,"%d\n",width);
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
    fprintf(fp,"%d\n",mode);
-
    fprintf(fp,"%u\n",qHead-qStart);
    fprintf(fp,"%u\n",qEnd-qStart);
-   for (i = qStart; i < qEnd; i++)
+   for (i = qStart; i < qEnd; ++i)
       fprintf(fp,"%u\n",rows[i]);
+   for (i = 0; i < QSIZE; ++i){
+      if (deepRowIndices[i]){
+         if (deepRowIndices[i] > 1){
+            for (j = 0; j < deepRows[deepRowIndices[i]][0] + 1 + 2; ++j){
+               fprintf(fp,"%u\n",deepRows[deepRowIndices[i]][j]);
+            }
+         }
+         else {
+            fprintf(fp,"0\n");
+            j = 0;
+            while (deepRowIndices[i] <= 1 && i < QSIZE){
+               if (deepRowIndices[i] == 1) ++j;
+               ++i;
+            }
+            fprintf(fp,"%u\n",j);
+            if (i == QSIZE) break;
+            --i;
+         }
+      }
+   }
    fclose(fp);
    dumpFlag = DUMPSUCCESS;
 }
@@ -1204,7 +1240,8 @@ void doCompactPart1()
 void doCompactPart2()
 {
    node x,y;
-
+   uint32_t i, j, k;
+   
    /*
       Make a pass forwards converting parent bits back to parent pointers.
       
@@ -1226,6 +1263,58 @@ void doCompactPart2()
       setVisited(qTail - 1);
    }
    rephase();
+   
+   /* Repack and respace depth-first extension queue to match node queue */
+   j = QSIZE - 1;
+   for(i = QSIZE; i > 0; --i){
+      if(deepRowIndices[i - 1]){
+         deepRowIndices[j] = deepRowIndices[i - 1];
+         deepRowIndices[i - 1] = 0;
+         --j;
+      }
+   }
+   
+   /* Sanity check: extension queue should not take up all available space */
+   if(deepRowIndices[0]){
+      fprintf(stderr,"Error: extension queue has too many elements.\n");
+      exit(1);
+   }
+   
+   i = 0;
+   j = 0;
+   while(!deepRowIndices[j] && j < QSIZE) ++j;
+   for(x = qHead; x < qTail && j < QSIZE; ++x){
+      if(EMPTY(x)){
+         ++i;
+         continue;
+      }
+      
+      deepRowIndices[i] = deepRowIndices[j];
+      
+      /* Sanity check: do the extension rows match the node rows? */
+      if(deepRowIndices[j] > 1){
+         y = x;
+         for(k = 0; k < 2*period; ++k){
+            uint16_t startRow = deepRows[deepRowIndices[j]][1] + 1;
+            if(deepRows[deepRowIndices[j]][startRow - k] != ROW(y)){
+               fprintf(stderr, "Warning: non-matching rows detected at node %u in doCompactPart2()\n",x);
+               free(deepRows[deepRowIndices[j]]);
+               deepRows[deepRowIndices[j]] = 0;
+               deepRowIndices[i] = 0;
+               break;
+            }
+            y = PARENT(y);
+         }
+      }
+      if(j > i) deepRowIndices[j] = 0;
+      ++i;
+      ++j;
+   }
+   for(j = qTail - qHead; j < QSIZE; ++j){
+      deepRowIndices[j] = 0;
+   }
+   deepQHead = 0;
+   deepQTail = qTail - qHead;
 }
 
 void doCompact()
@@ -1275,7 +1364,7 @@ void setkey(int h, int v) {
 /* ========================== */
 
 void process(node theNode);
-int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *pRows);
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows);
 
 static void deepen(){
    node i;
@@ -1303,33 +1392,33 @@ static void deepen(){
    
    #pragma omp parallel
    {
-   node j;
-   uint16_t **pInd;
-   int *pRemain;
-   row *pRows;
-   
-   pInd = (uint16_t**)malloc((long long)sizeof(*pInd) * (deepeningAmount + 4 * params[P_PERIOD]));
-   pRemain = (int*)malloc((long long)sizeof(*pRemain) * (deepeningAmount + 4 * params[P_PERIOD]));
-   pRows = (row*)malloc((long long)sizeof(*pRows) * (deepeningAmount + 4 * params[P_PERIOD]));
-   
-   #pragma omp for schedule(dynamic, CHUNK_SIZE)
-   for (j = qHead; j < qTail; j++) {
-      if (!EMPTY(j) && !depthFirst(j, deepeningAmount, pInd, pRemain, pRows))
-         MAKEEMPTY(j);
+      node j;
+      uint16_t **pInd;
+      int *pRemain;
+      row *pRows;
+      
+      pInd = (uint16_t**)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pInd));
+      pRemain = (int*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRemain));
+      pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRows));
+      
+      #pragma omp for schedule(dynamic, CHUNK_SIZE)
+      for (j = qHead; j < qTail; ++j) {
+         if (!EMPTY(j) && !depthFirst(j, (uint16_t)deepeningAmount, pInd, pRemain, pRows))
+            MAKEEMPTY(j);
+      }
+      free(pInd);
+      free(pRemain);
+      free(pRows);
    }
-   free(pInd);
-   free(pRemain);
-   free(pRows);
-   }
    
-   if (deepeningAmount > period) deepeningAmount--; /* allow for gradual depth reduction */
+   if (deepeningAmount > period) --deepeningAmount; /* allow for gradual depth reduction */
    
    /* before reporting new queue size, shrink tree back down */
    printf(" -> ");
    fflush(stdout);
    
    /* signal time for dump */
-   if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;\
+   if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;
    
    doCompact();
    
@@ -1372,6 +1461,33 @@ static void breadthFirst()
    }
 }
 
+void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRows){
+   uint32_t theDeepIndex;
+   #pragma omp critical(findDeepIndex)
+   {
+      theDeepIndex = 2;
+      while(deepRows[theDeepIndex] && theDeepIndex < 1 << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
+      if(theDeepIndex == 1 << (params[P_DEPTHLIMIT] + 1)){
+         fprintf(stderr,"Error: no available extension indices.\n");
+         aborting = 1;
+      }
+      if(!aborting){
+         deepRows[theDeepIndex] = (row*)calloc( startRow + howDeep + 1 + 2,
+                                                sizeof(**deepRows) );
+      }
+   }
+   if(aborting) return;
+   
+   memcpy( deepRows[theDeepIndex] + 2,
+           pRows,
+           (startRow + howDeep + 1) * (long long)sizeof(**deepRows) );
+   
+   deepRows[theDeepIndex][0] = startRow + howDeep;
+   deepRows[theDeepIndex][1] = startRow;
+   
+   deepRowIndices[deepQHead + theNode - qHead] = theDeepIndex;
+}
+
 /* ========================== */
 /*  Print usage instructions  */
 /* ========================== */
@@ -1409,6 +1525,7 @@ void usage(){
    printf("  -i NN  sets minimum deepening increment to NN (default: period)\n");
    printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
    printf("         (total depth includes depth of BFS queue)\n");
+   printf("  -g NN  stores depth-first extensions of length at least NN (default: 0)\n");
    printf("  -f NN  stops search if NN ships are found (default: no limit)\n");
    printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
@@ -1430,10 +1547,8 @@ void usage(){
    printf("         file name prefix FF\n");
    printf("  -l FF  loads the search state from the file FF\n");
    printf("  -j NN  splits the search state into at most NN files\n");
-   printf("         (uses the file name prefix defined by -d option\n");
+   printf("         (uses the file name prefix defined by the -d option)\n");
    printf("  -u     previews partial results from the loaded state\n");
-   printf("\n");
-   printf("  -o     uses naive search order (not recommended)\n");
    printf("\n");
    printf("  --help  prints usage instructions and exits\n");
 }
@@ -1452,7 +1567,6 @@ void echoParams(){
    else if(params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
    else if(params[P_SYMMETRY] == SYM_GUTTER) printf("Symmetry: gutter\n");
    if(params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
-   if(!params[P_REORDER]) printf("Use naive search order\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
    printf("Minimum deepening increment: %d\n",MINDEEP);
@@ -1462,6 +1576,7 @@ void echoParams(){
 #endif
    if(params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
+   if(params[P_MINEXTENSION]) printf("Save depth-first extensions of length at least %d\n",params[P_MINEXTENSION]);
    if(params[P_LONGEST] == 0)printf("Printing of longest partial result disabled\n");
 }
 
@@ -1621,13 +1736,13 @@ void loadParams() {
    dumpRoot = loadDumpRoot;
    
    /* Load parameters */
-   for (i = 0; i < NUM_PARAMS; i++)
+   for (i = 0; i < NUM_PARAMS; ++i)
       params[i] = loadInt(fp);
 }
 
 void loadState(){
    FILE * fp;
-   int i;
+   uint32_t i, j;
    
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
@@ -1635,7 +1750,7 @@ void loadState(){
    loadUInt(fp);                                   /* skip file version */
    fscanf(fp, "%*[^\n]\n");                        /* skip rule */
    fscanf(fp, "%*[^\n]\n");                        /* skip dump root */
-   for (i = 0; i < NUM_PARAMS; i++) loadInt(fp);   /* skip parameters */
+   for (i = 0; i < NUM_PARAMS; ++i) loadInt(fp);   /* skip parameters */
    
    /* Load / initialise globals */
    width          = loadInt(fp);
@@ -1648,7 +1763,7 @@ void loadState(){
    nRowsInState    = period+period;   /* how many rows needed to compute successor graph? */
    
    params[P_DEPTHLIMIT] = DEFAULT_DEPTHLIMIT;
-
+   
     /* Allocate space for the data structures */
    base = (node*)malloc((QSIZE>>BASEBITS)*sizeof(node));
    rows = (row*)malloc(QSIZE*sizeof(row));
@@ -1673,17 +1788,45 @@ void loadState(){
       printf("BFS queue is too small for saved state\n");
       exit(0);
    }
-   for (i = qStart; i < qEnd; i++)
+   for (i = qStart; i < qEnd; ++i)
       rows[i] = (row) loadUInt(fp);
-   fclose(fp);
-/*
+   
+   /*
    printf("qHead:  %d qStart: %d qEnd: %d\n",qHead,qStart,qEnd);
    printf("rows[0]: %d\n",rows[qStart]);
    printf("rows[1]: %d\n",rows[qStart+1]);
    printf("rows[2]: %d\n",rows[qStart+2]);
    fflush(stdout);
    exit(0);
-*/
+   */
+   
+   deepRows = (row**)calloc(1 << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
+   deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
+   
+   uint32_t theDeepIndex = 2;
+   deepQTail = 0;
+   
+   while (fscanf(fp,"%u\n",&j) != EOF){
+      if (j == 0){
+         fscanf(fp,"%u\n",&j);
+         for (i = 0; i < j; ++i){
+            deepRowIndices[deepQTail] = 1;
+            ++deepQTail;
+         }
+         continue;
+      }
+      deepRows[theDeepIndex] = (row*)calloc( j + 1 + 2, sizeof(**deepRows));
+      deepRows[theDeepIndex][0] = j;
+      for (i = 1; i < j + 1 + 2; ++i){
+         deepRows[theDeepIndex][i] = loadUInt(fp);
+      }
+      deepRowIndices[deepQTail] = theDeepIndex;
+      ++theDeepIndex;
+      ++deepQTail;
+   }
+   
+   fclose(fp);
+   
    doCompactPart2();
    
    /* Let the user know that we got this far (suppress if splitting) */
@@ -1698,7 +1841,7 @@ void loadState(){
 
 void printRow(row theRow){
    int i;
-   for(i = width - 1; i >= 0; i--) printf("%c",(theRow & 1 << i ? 'o' : '.'));
+   for(i = width - 1; i >= 0; --i) printf("%c",(theRow & 1 << i ? 'o' : '.'));
    printf("\n");
 }
 
@@ -1754,6 +1897,7 @@ void setDefaultParams(){
    params[P_LONGEST] = 1;
    params[P_LASTDEEP] = 0;
    params[P_NUMSHIPS] = 0;
+   params[P_MINEXTENSION] = 0;
 }
 
 /* Note: currently reserving -v for potentially editing an array of extra variables */
@@ -1834,14 +1978,15 @@ void parseOptions(int argc, char *argv[]){
                --argc;
                sscanf(*++argv, "%d", &params[P_NUMSHIPS]);
                break;
+            case 'g': case 'G':
+               --argc;
+               sscanf(*++argv, "%d", &params[P_MINEXTENSION]);
+               break;
             case 'z': case 'Z':
                params[P_PRINTDEEP] = 0;
                break;
             case 'a': case 'A':
                params[P_LONGEST] = 0;
-               break;
-            case 'o': case 'O':
-               params[P_REORDER] = 0;
                break;
             case 'u': case 'U':
                previewFlag = 1;
@@ -1885,6 +2030,11 @@ void parseOptions(int argc, char *argv[]){
               break;
          }
       }
+      else{
+         fprintf(stderr, "Error: unrecognized option %s\n", *argv);
+         fprintf(stderr, "\nUse --help for a list of available options.\n");
+         exit(1);
+      }
    }
 }
 
@@ -1916,6 +2066,9 @@ void searchSetup(){
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
       
+      deepRows = (row**)calloc(1 << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
+      deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
+      
       resetQ();
       resetHash();
       
@@ -1929,6 +2082,8 @@ void searchSetup(){
       exit(0);
    }
    
+   if(params[P_MINEXTENSION] < 0) params[P_MINEXTENSION] = 0;
+   
    /* correction of params[P_LASTDEEP] after modification */
    if(newLastDeep){
       params[P_LASTDEEP] -= MINDEEP;
@@ -1938,6 +2093,8 @@ void searchSetup(){
    /* split queue across multiple files */
    if(splitNum > 0){
       node x;
+      uint32_t i,j;
+      uint32_t deepIndex;
       int firstDumpNum = 0;
       int totalNodes = 0;
       
@@ -1986,6 +2143,13 @@ void searchSetup(){
       free(rows);
       free(hash);
       
+      for (deepIndex = 0; deepIndex < 1 << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
+         if (deepRows[deepIndex]) free(deepRows[deepIndex]);
+         deepRows[deepIndex] = 0;
+      }
+      free(deepRows);
+      free(deepRowIndices);
+      
       node currNode = fixedQHead;
       
       while(currNode < fixedQTail){
@@ -1994,14 +2158,20 @@ void searchSetup(){
          loadState();
          
          /* empty everything before currNode */
-         for(x = fixedQHead; x < currNode; x++) MAKEEMPTY(x);
+         j = deepQHead;
+         for(x = fixedQHead; x < currNode; ++x){
+            MAKEEMPTY(x);
+            deepRowIndices[j] = 0;
+            ++j;
+         }
          
          /* skip the specified number of nonempty nodes */
-         int i = 0;
+         i = 0;
          while(i < nodesPerFile && x < fixedQTail){
             if(!EMPTY(x))
-               i++;
-            x++;
+               ++i;
+            ++x;
+            ++j;
          }
          
          /* update currNode */
@@ -2010,7 +2180,9 @@ void searchSetup(){
          /* empty everything after specified nonempty nodes */
          while(x < fixedQTail){
             MAKEEMPTY(x);
-            x++;
+            deepRowIndices[j] = 0;
+            ++x;
+            ++j;
          }
          
          /* save the piece */
@@ -2030,10 +2202,18 @@ void searchSetup(){
             exit(1);
          }
          
-         /* prevent memory leak */
+         /* free memory allocated in loadState() */
+         for (deepIndex = 0; deepIndex < 1 << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
+            if (deepRows[deepIndex]) free(deepRows[deepIndex]);
+            deepRows[deepIndex] = 0;
+         }
+         
          free(base);
          free(rows);
          free(hash);
+         free(deepRows);
+         free(deepRowIndices);
+         
       }
       
       printf("Saved pieces in files %s%05d to %s\n",dumpRoot,firstDumpNum,dumpFile);

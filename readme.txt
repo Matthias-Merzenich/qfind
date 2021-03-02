@@ -1,4 +1,4 @@
-qfind v1.4
+qfind v2.0
 
 qfind is a spaceship search program for Conway's Game of Life and other
 Life-like cellular automata written by Matthias Merzenich.  It is based on
@@ -68,6 +68,9 @@ Version History:
       Fix bug when changing queue size after loading state
       Fix bug due to non-initialization of variables
       Fix bug due to missing return type of loadState()
+   2.0, 2 March 2021
+      Add ability to save and restore depth-first extensions
+      Remove naive search order option
 
 ------------------------------------------------------------------------------
 Matthias Merzenich

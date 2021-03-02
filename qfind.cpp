@@ -129,17 +129,17 @@ void process(node theNode)
    long long int i;
    int firstRow = 0;
    int numRows;
-   uint32_t newRowSet;
+   int matchFlag = 1;
    node x = theNode;
    int pPhase = peekPhase(x);
    row *riStart;
-   row pRows[3*MAXPERIOD];
-   int currRow = 2*period + pPhase + 1;
+   row pRows[2*MAXPERIOD + 2];
+   int currRow = 2*period + 1;
    for(i = currRow - 1; i >= 0; --i){
       pRows[i] = ROW(x);
       x = PARENT(x);
    }
-
+   
    ++pPhase;
    if(pPhase == period) pPhase = 0;
    
@@ -147,10 +147,59 @@ void process(node theNode)
                      pRows[currRow - period],
                      pRows[currRow - period + backOff[pPhase]],
                      riStart, numRows);
-
+   
+   /* we just ran dequeue() so we need to look at the previous head location */
+   uint32_t deepIndex = deepRowIndices[oldDeepQHead];
+   
    if(theNode == 0){
       firstRow = 1;
    }
+   else if(deepIndex > 1){  /* This means we found an extension previously */
+      
+      /* Sanity check: do the extension rows match the node rows? */
+      node y = theNode;
+      for(i = 0; i < 2*period; ++i){
+         uint16_t startRow = deepRows[deepIndex][1] + 1;
+         if(deepRows[deepIndex][startRow - i] != ROW(y)){
+            fprintf(stderr, "Warning: non-matching rows detected at node %u in process()\n",theNode);
+            matchFlag = 0;
+            free(deepRows[deepIndex]);
+            deepRows[deepIndex] = 0;
+            break;
+         }
+         y = PARENT(y);
+      }
+      
+      if(matchFlag){
+         uint16_t deepStart = deepRows[deepIndex][1] + 2;
+         ++deepRows[deepIndex][1];
+         
+         while(riStart[firstRow] != deepRows[deepIndex][deepStart]) ++firstRow;
+         if (!isVisited(theNode, riStart[firstRow])){
+            enqueue(theNode, riStart[firstRow]);
+            deepRowIndices[deepQTail - 1] = deepIndex;
+            if(currentDepth() > longest){
+               if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
+               longest = currentDepth();
+            }
+            if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
+            setVisited(qTail - 1);
+            if(deepRows[deepIndex][1] > deepRows[deepIndex][0]){
+               deepRowIndices[deepQTail - 1] = 0;
+            }
+         }
+         
+         /* eliminate extension if it gets too short */
+         if(deepRows[deepIndex][1] > deepRows[deepIndex][0]){
+            free(deepRows[deepIndex]);
+            deepRows[deepIndex] = 0;
+         }
+         ++firstRow;
+      }
+   }
+   
+   /* This is no longer in the queue, so we can clear it */
+   deepRowIndices[oldDeepQHead] = 0;
    
    for(i = firstRow; i < numRows; ++i){
       pRows[currRow] = riStart[i];
@@ -166,22 +215,89 @@ void process(node theNode)
    }
 }
 
-int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *pRows){
+int reloadDepthFirst(uint16_t startRow, int pPhase, uint16_t howDeep, row *pRows, uint16_t **pIndGen, int *pRemainGen, row *pRowsGen){
+   uint16_t currRow = startRow;
+   
+   /* Return value if length of extension is greater than deepening amount */
+   if(pRows[0] >= howDeep + pRows[1]) return 1;
+   
+   memcpy(pRowsGen + startRow, pRows + 2 + pRows[1], (pRows[0] - pRows[1] + 1) * (long long)sizeof(*pRowsGen));
+   
+   for(currRow = startRow; currRow <= startRow + (pRows[0] - pRows[1]); ++currRow){
+      getoffsetcount(pRowsGen[currRow - 2 * period],
+                  pRowsGen[currRow - period],
+                  pRowsGen[currRow - period + backOff[pPhase]],
+                  pIndGen[currRow], pRemainGen[currRow]);
+      
+      pIndGen[currRow] += pRemainGen[currRow];
+      
+      while(*(pIndGen[currRow] - pRemainGen[currRow]) != pRowsGen[currRow]){
+         --pRemainGen[currRow];
+      }
+      --pRemainGen[currRow];
+      
+      ++pPhase;
+      if(pPhase == period) pPhase = 0;
+   }
+   return 0;
+}
+
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows){
    int pPhase;
    pPhase = peekPhase(theNode);
-
    node x = theNode;
-   uint32_t startRow = 2*period + pPhase + 1;
+   uint32_t startRow = 2*period + 1;
    uint32_t currRow = startRow;
+   uint32_t theDeepIndex = deepRowIndices[deepQHead + theNode - qHead];
+   int matchFlag = 1;
    
    int i;
    for(i = currRow - 1; i >= 0; --i){
       pRows[i] = ROW(x);
       x = PARENT(x);
    }
-
    ++pPhase;
    if(pPhase == period) pPhase = 0;
+   
+   /* Reload state if we have a previous extension */
+   if(theDeepIndex > 1){
+      if(reloadDepthFirst( startRow,
+                           pPhase,
+                           howDeep,
+                           deepRows[theDeepIndex],
+                           pInd,
+                           pRemain,
+                           pRows ))
+      {
+         return 1;   /* return if howDeep is less than the length of the previous extension */
+      }
+      
+      /* Sanity check: do the extension rows match the node rows? */
+      node y = theNode;
+      for(i = 0; i < 2*period; ++i){
+         if(deepRows[theDeepIndex][deepRows[theDeepIndex][1] + 1 - i] != ROW(y)){
+            fprintf(stderr, "Warning: non-matching rows detected at node %u in depthFirst()\n",theNode);
+            matchFlag = 0;
+            break;
+         }
+         y = PARENT(y);
+      }
+      
+      if(matchFlag){
+         currRow = startRow   + deepRows[theDeepIndex][0]
+                              - deepRows[theDeepIndex][1]
+                              + 1;
+         pPhase = (pPhase + currRow - startRow) % period;
+         
+         #pragma omp critical(findDeepIndex)
+         {
+            free(deepRows[theDeepIndex]);
+            deepRows[theDeepIndex] = 0;
+         }
+      }
+   }
+   
+   deepRowIndices[deepQHead + theNode - qHead] = 0;
    
    getoffsetcount(pRows[currRow - 2 * period],
                   pRows[currRow - period],
@@ -189,17 +305,13 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
                   pInd[currRow], pRemain[currRow]);
    pInd[currRow] += pRemain[currRow];
    
-   
-   
    for(;;){
-
       /* back up if there are no rows left to check at this depth */
       if(!pRemain[currRow]){
          --currRow;
          if(pPhase == 0) pPhase = period;
          --pPhase;
-         if(currRow < startRow)
-            return 0;
+         if(currRow < startRow) return 0;
          
          continue;
       }
@@ -213,12 +325,21 @@ int depthFirst(node theNode, long howDeep, uint16_t **pInd, int *pRemain, row *p
       /* Check if we reached the desired depth. If so,  
          check if the result is a complete spaceship */
       if(currRow > startRow + howDeep){
+         /* Flag that an extension was found. This value will be changed by saveDepthFirst() */
+         deepRowIndices[deepQHead + theNode - qHead] = 1;
+         
+         /* Save the extension if it is long enough */
+         if(howDeep >= params[P_MINEXTENSION]){
+            saveDepthFirst(theNode, startRow, howDeep, pRows);
+         }
+         
+         /* Check if the extension represents a spaceship */
          if(params[P_PRINTDEEP] == 0) return 1;
          for(i = 1; i <= period; ++i){
             if(pRows[currRow - i]) return 1;
          }
          currRow -= period;
-         for(i = 1; i<= period; ++i){
+         for(i = 1; i <= period; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
          /* If we got here, then we found a spaceship! */
