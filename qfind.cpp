@@ -182,7 +182,7 @@ void process(node theNode)
                if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
                longest = currentDepth();
             }
-            if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
+            if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
             setVisited(qTail - 1);
             if(deepRows[deepIndex][1] > deepRows[deepIndex][0]){
                deepRowIndices[deepQTail - 1] = 0;
@@ -209,7 +209,7 @@ void process(node theNode)
             if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
             longest = currentDepth();
          }
-         if (terminal(qTail-1)) success(qTail-1, NULL, 0, 0);
+         if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
       }
    }

@@ -906,8 +906,8 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
       oldnrows = nrows;
       oldsrows = (unsigned long*)realloc(oldsrows, sxsAllocRows * sizeof(unsigned long));
       oldssrows = (unsigned long*)realloc(oldssrows, sxsAllocRows * sizeof(unsigned long));
-      memcpy(oldsrows, sxsAllocData, sxsAllocRows * sizeof(unsigned long));
-      memcpy(oldssrows, sxsAllocData2, sxsAllocRows * sizeof(unsigned long));
+      memcpy(oldsrows, srows, nrows * sizeof(unsigned long));
+      memcpy(oldssrows, ssrows, nrows * sizeof(unsigned long));
    }
    
    /* Buffer output */
