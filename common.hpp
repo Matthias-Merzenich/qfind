@@ -29,6 +29,7 @@
 #define QBITS 20
 #define HASHBITS 20
 #define DEFAULT_DEPTHLIMIT (qBits-3)
+#define DEFAULT_CACHEMEM 32
 
 #define P_WIDTH 0
 #define P_PERIOD 1
@@ -1339,6 +1340,9 @@ void doCompact()
 
 #ifndef NOCACHE
 int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
+#ifndef QSIMPLE
+   if(params[P_CACHEMEM] == 0) return 0;
+#endif
    unsigned long long h = (unsigned long long)p1 +
       17 * (unsigned long long)p2 + 257 * (unsigned long long)p3 +
       513 * abn ;
@@ -1355,7 +1359,10 @@ int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
 }
 
 void setkey(int h, int v) {
-   cache[omp_get_thread_num()][h].r = v ;
+#ifndef QSIMPLE
+   if(params[P_CACHEMEM])
+#endif
+      cache[omp_get_thread_num()][h].r = v ;
 }
 #endif
 
@@ -1534,11 +1541,13 @@ void usage(){
    printf("  -b NN  groups 2^NN queue entries to an index node (default: 4)\n");
    printf("  -m NN  limits memory usage to NN megabytes (default: no limit)\n");
 #ifndef NOCACHE
-   printf("  -c NN  allocates NN megabytes per thread for lookahead cache (default: 32)\n");
+   printf("  -c NN  allocates NN megabytes per thread for lookahead cache\n");
+   printf("         (default: %d if speed is greater than c/5 and disabled otherwise)\n",DEFAULT_CACHEMEM);
+   printf("         Use -c 0 to disable lookahead caching.\n");
 #endif
    printf("  -z     toggles whether to output spaceships found during deepening step\n");
-   printf("         (default: output enabled for spaceships found during deepening step;\n");
-   printf("         disabling is useful for searches that find many spaceships)\n");
+   printf("         (default: output enabled for spaceships found during deepening step)\n");
+   printf("         Disabling is useful for searches that find many spaceships.\n");
    printf("  -a     toggles whether to output longest partial result at end of search\n");
    printf("         (default: output enabled for longest partial result)\n");
    printf("\n");
@@ -1564,22 +1573,25 @@ void echoParams(){
    printf("Period: %d\n",params[P_PERIOD]);
    printf("Offset: %d\n",params[P_OFFSET]);
    printf("Width:  %d\n",params[P_WIDTH]);
-   if(params[P_SYMMETRY] == SYM_ASYM) printf("Symmetry: asymmetric\n");
-   else if(params[P_SYMMETRY] == SYM_ODD) printf("Symmetry: odd\n");
-   else if(params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
-   else if(params[P_SYMMETRY] == SYM_GUTTER) printf("Symmetry: gutter\n");
-   if(params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
+   if (params[P_SYMMETRY] == SYM_ASYM) printf("Symmetry: asymmetric\n");
+   else if (params[P_SYMMETRY] == SYM_ODD) printf("Symmetry: odd\n");
+   else if (params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
+   else if (params[P_SYMMETRY] == SYM_GUTTER) printf("Symmetry: gutter\n");
+   if (params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
    printf("Minimum deepening increment: %d\n",MINDEEP);
-   if(params[P_PRINTDEEP] == 0)printf("Output disabled while deepening\n");
+   if (params[P_PRINTDEEP] == 0)printf("Output disabled while deepening\n");
 #ifndef NOCACHE
-   printf("Cache memory per thread: %d megabytes\n", params[P_CACHEMEM]);
+   if (params[P_CACHEMEM])
+      printf("Cache memory per thread: %d megabytes\n", params[P_CACHEMEM]);
+   else
+      printf("Lookahead caching disabled\n");
 #endif
-   if(params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
+   if (params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
-   if(params[P_MINEXTENSION]) printf("Save depth-first extensions of length at least %d\n",params[P_MINEXTENSION]);
-   if(params[P_LONGEST] == 0)printf("Printing of longest partial result disabled\n");
+   if (params[P_MINEXTENSION]) printf("Save depth-first extensions of length at least %d\n",params[P_MINEXTENSION]);
+   if (params[P_LONGEST] == 0) printf("Printing of longest partial result disabled\n");
 }
 
 /* ========================= */
@@ -1671,12 +1683,12 @@ void checkParams(){
       fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
    }
 #ifdef NOCACHE
-   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you recompile with NOCACHE undefined.\n");
+   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0 && params[P_CACHEMEM] == 0){
+      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you increase the cache memory (-c).\n");
    }
 #else
-   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0){
-      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you recompile with NOCACHE defined.\n");
+   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0 && params[P_CACHEMEM] > 0){
+      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you disable caching (-c 0).\n");
    }
 #endif
    
@@ -1893,7 +1905,7 @@ void setDefaultParams(){
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
    params[P_MINDEEP] = 0;
-   params[P_CACHEMEM] = 32;
+   params[P_CACHEMEM] = -1*DEFAULT_CACHEMEM;
    params[P_MEMLIMIT] = -1;
    params[P_PRINTDEEP] = 1;
    params[P_LONGEST] = 1;
@@ -2041,6 +2053,11 @@ void parseOptions(int argc, char *argv[]){
 }
 
 void searchSetup(){
+   if (params[P_CACHEMEM] < 0){
+      if (5 * params[P_OFFSET] > params[P_PERIOD]) params[P_CACHEMEM] *= -1;
+      else params[P_CACHEMEM] = 0;
+   }
+   
    checkParams();  /* Exit if parameters are invalid */
    
    if(loadDumpFlag) loadState();

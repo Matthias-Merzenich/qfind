@@ -5,10 +5,13 @@
 
 /*  Lookahead caching seems to speed up searches for spaceships with    */
 /*  speeds exceeding c/5 and slow down searches for spaceships with     */
-/*  speeds at or below c/5.  If appropriate for your input parameters,  */
-/*  uncomment the following line to disable lookahead caching.          */
+/*  speeds at or below c/5.  Lookahead caching will automatically be    */
+/*  enabled or disabled depending on your choice of PERIOD and OFFSET.  */
+/*  To override the automatic choice, uncomment one of the following    */
+/*  two lines.                                                          */
 
 //#define NOCACHE
+//#define FORCECACHE
 
 /*  Change the following three values before compiling.  */
 /*  You must have gcd(PERIOD,OFFSET) = 1.                */
@@ -18,14 +21,8 @@
 
 #define QSIMPLE
 
-#include "common.hpp"
-
 #if WIDTH < 1 || PERIOD < 1 || OFFSET < 1
    #error "Invalid value for PERIOD, OFFSET, or WIDTH."
-#endif
-
-#if PERIOD > MAXPERIOD
-   #error "maximum allowed PERIOD exceeded."
 #endif
 
 #if OFFSET > PERIOD && PERIOD > 0
@@ -40,14 +37,26 @@
    #warning "Searches for speeds exceeding c/2 may not work correctly."
 #endif
 
-#ifdef NOCACHE
+#if defined (NOCACHE)
    #if 5 * OFFSET > PERIOD && PERIOD > 0
       #warning "Searches for speeds exceeding c/5 may be slower without caching. It is recommended that you recompile with NOCACHE undefined."
    #endif
-#else
+#elif defined (FORCECACHE)
    #if 5 * OFFSET <= PERIOD && OFFSET > 0
       #warning "Searches for speeds at or below c/5 may be slower with caching. It is recommended that you recompile with NOCACHE defined."
    #endif
+#endif
+
+#ifndef FORCECACHE
+   #if 5 * OFFSET <= PERIOD
+      #define NOCACHE
+   #endif
+#endif
+
+#include "common.hpp"
+
+#if PERIOD > MAXPERIOD
+   #error "maximum allowed PERIOD exceeded."
 #endif
 
 int lookAhead(row *pRows, int a){

@@ -6,15 +6,6 @@
 ** This is an attempt at combining the functionality of gfind and zfind.
 */
 
-/* Lookahead caching seems to speed up searches for spaceships with  */
-/* speeds exceeding c/5 and slow down searches for spaceships with   */
-/* speeds at or below c/5.  It is recommended that you compile two   */
-/* versions of this program, one unchanged and one with following    */
-/* line uncommented to disable lookahead caching.  You can then use  */
-/* the version of the program most appropriate for your input.       */
-
-//#define NOCACHE
-
 #include "common.hpp"
 
 int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
