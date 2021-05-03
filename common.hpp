@@ -1526,7 +1526,7 @@ void usage(){
    printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
    printf("         (total depth includes depth of BFS queue)\n");
    printf("  -g NN  stores depth-first extensions of length at least NN (default: 0)\n");
-   printf("  -f NN  stops search if NN ships are found (default: no limit)\n");
+   printf("  -f NN  stops search if NN spaceships are found (default: no limit)\n");
    printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("         Use -h 0 to disable duplicate elimination.\n");
@@ -1536,9 +1536,11 @@ void usage(){
 #ifndef NOCACHE
    printf("  -c NN  allocates NN megabytes per thread for lookahead cache (default: 32)\n");
 #endif
-   printf("  -z     disables output during deepening step\n");
-   printf("         (useful for searches that find many spaceships)\n");
-   printf("  -a     Suppresses output of longest partial result at end of search\n");
+   printf("  -z     toggles whether to output spaceships found during deepening step\n");
+   printf("         (default: output enabled for spaceships found during deepening step;\n");
+   printf("         disabling is useful for searches that find many spaceships)\n");
+   printf("  -a     toggles whether to output longest partial result at end of search\n");
+   printf("         (default: output enabled for longest partial result)\n");
    printf("\n");
    printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
    printf("         (use the companion Golly python script to easily generate the\n");
@@ -1983,10 +1985,10 @@ void parseOptions(int argc, char *argv[]){
                sscanf(*++argv, "%d", &params[P_MINEXTENSION]);
                break;
             case 'z': case 'Z':
-               params[P_PRINTDEEP] = 0;
+               params[P_PRINTDEEP] ^= 1;
                break;
             case 'a': case 'A':
-               params[P_LONGEST] = 0;
+               params[P_LONGEST] ^= 1;
                break;
             case 'u': case 'U':
                previewFlag = 1;
