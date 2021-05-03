@@ -20,9 +20,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.0 by Matthias Merzenich, 2 March 2021"
+#define BANNER XSTR(WHICHPROGRAM)" v2.1 by Matthias Merzenich, 3 May 2021"
 
-#define FILEVERSION ((unsigned long) 2021030201)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2021050301)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
