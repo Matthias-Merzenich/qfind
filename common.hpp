@@ -1552,7 +1552,7 @@ void usage(){
    printf("         (default: output enabled for longest partial result)\n");
    printf("\n");
    printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
-   printf("         (use the companion Golly python script to easily generate the\n");
+   printf("         (use the companion Golly Lua script to easily generate the\n");
    printf("         initial row file)\n");
    printf("  -d FF  dumps the search state after each queue compaction using\n");
    printf("         file name prefix FF\n");

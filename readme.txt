@@ -23,10 +23,10 @@ qfind-s.cpp
    Compilation is otherwise the same.
 
 
-get-rows.py:
-   This is a Golly Python script to help with extending partial results.
-   Usage instructions are provided in the source code.  This script requires
-   the Life application Golly.
+get-rows.lua:
+   This is a Golly Lua script to help with extending partial results.  Usage
+   instructions are provided in the source code.  This script requires the
+   Life application Golly.
 
 ------------------------------------------------------------------------------
 Version History:
