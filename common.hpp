@@ -915,10 +915,10 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    patternBuf = (char*)realloc(patternBuf, ((2 * MAXWIDTH + 4) * sxsAllocRows + 300) * sizeof(char));
    
    sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, rule);
-      
-   while (nrows-- > 0) {
-      if (margin > nrows) bufRow(ssrows[nrows], srows[nrows], margin - nrows);
-      else bufRow(ssrows[nrows], srows[nrows], 0);
+   
+   int theBufRow = -1;
+   while(theBufRow++ < nrows){
+      bufRow(ssrows[theBufRow], srows[theBufRow], 0);
    }
    RLEchar = '!';
    bufRLE('\0');
