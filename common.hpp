@@ -424,8 +424,8 @@ int bbuf_left = 0 ;
 /* reduce fragmentation by allocating chunks larger than needed and */
 /* parceling out the small pieces.                                  */
 uint16_t *bmalloc(int siz) {
-   if (siz > bbuf_left) {
-      bbuf_left = 1 << (2 * width) ;
+   if (siz + (1<<width) > bbuf_left) {
+      bbuf_left = 1 << (2 * width) + (1<<width) ;
       memusage += 2*bbuf_left ;
       if (params[P_MEMLIMIT] >= 0 && memusage > memlimit) {
          printf("Aborting due to excessive memory usage\n") ;
@@ -850,7 +850,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    
    /* normalize nrows to only include blank rows */
    nrows += MAXWIDTH;
-   while (srows[nrows-1] == 0 && ssrows[nrows-1] == 0 && nrows>0) nrows--;
+   while (nrows>0 && srows[nrows-1] == 0 && ssrows[nrows-1] == 0) nrows--;
    while (srows[0] == 0 && ssrows[0] == 0 && nrows>0) {
       srows++;
       ssrows++;
