@@ -1500,12 +1500,12 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /* ========================== */
 
 /* Note: currently reserving -v for potentially editing an array of extra variables */
-void usage(){
+void usage(char *programName){
 #ifndef QSIMPLE
-   printf("Usage: \"qfind options\"\n");
-   printf("  e.g. \"qfind -r B3/S23 -p 3 -y 1 -w 6 -s even\" searches Life (rule B3/S23)\n");
-   printf("  for c/3 orthogonal spaceships with even bilateral symmetry and a\n");
-   printf("  logical width of 6 (full width 12).\n");
+   printf("Usage: \"%s options\"\n", programName);
+   printf("  e.g. \"%s -r B3/S23 -p 3 -y 1 -w 6 -s even\"\n", programName);
+   printf("  searches Life (rule B3/S23) for c/3 orthogonal spaceships with\n");
+   printf("  even bilateral symmetry and a logical width of 6 (full width 12).\n");
 #else
    printf("Three required parameters, the period, offset, and width, must be\n");
    printf("set within the code before it is compiled. You have compiled with\n");
@@ -1939,6 +1939,7 @@ void setDefaultParams(){
 
 /* Note: currently reserving -v for potentially editing an array of extra variables */
 void parseOptions(int argc, char *argv[]){
+   char *programName = argv[0];
    while(--argc > 0){               /* read input parameters */
       if ((*++argv)[0] == '-'){
          switch ((*argv)[1]){
@@ -2051,7 +2052,7 @@ void parseOptions(int argc, char *argv[]){
                break;
             case '-':
                if(!strcmp(*argv,"--help") || !strcmp(*argv,"--Help")){
-                  usage();
+                  usage(programName);
                   exit(0);
                }
                else{
