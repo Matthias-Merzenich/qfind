@@ -1,9 +1,9 @@
-qfind v2.1
+qfind v2.2
 
-qfind is a spaceship search program for Conway's Game of Life and other
-Life-like cellular automata written by Matthias Merzenich.  It is based on
-David Eppstein's gfind and zdr's zfind search programs.  Additional code and
-suggestions were provided by Paul Tooke, Tomas Rokicki, Aidan F. Pierce, and
+qfind is a spaceship search program for Conway's Game of Life and related
+cellular automata written by Matthias Merzenich.  It is based on David
+Eppstein's gfind and zdr's zfind search programs.  Additional code and
+suggestions were provided by Paul Tooke, Tomas Rokicki, praosylen, and
 Adam P. Goucher.
 
 Three scripts are included:
@@ -33,7 +33,7 @@ Version History:
    0.1, 19 June 2017
       Initial release
    0.2, July 2017
-      Add mimimum deepening increment parameter
+      Add minimum deepening increment parameter
       Add ability to extend partial results
       Make parallel loop scheduling dynamic
    1.0, 3 January 2020
@@ -60,7 +60,7 @@ Version History:
       Add dump-and-exit option
       Add option to choose depth level of first deepening step
       Replace initial rows parameter with dedicated global variable
-      Fix bug with free() of non-malloced pointer in success()
+      Fix bug with free() of non-allocated pointer in success()
    1.4, 31 January 2021
       Add option to set maximum number of ships in output
       Add option to split the search state (replaces dump-and-exit)
@@ -76,6 +76,10 @@ Version History:
       Change -a and -z options to toggles
       Replace Python script with Lua script
       Fix bug causing redundant output
+   2.2, 21 June 2022
+      Orient output to travel upward
+      Print extension rows when previewing partial results
+      Fix potential heap overflow bugs
 
 ------------------------------------------------------------------------------
 Matthias Merzenich
