@@ -1600,6 +1600,7 @@ void echoParams(){
 
 static void preview(int allPhases) {
    node i,j,k;
+   row *pRows;
    int ph;
 
    for (i = qHead; (i<qTail) && EMPTY(i); i++);
@@ -1608,7 +1609,29 @@ static void preview(int allPhases) {
    
    while (j>=i && !aborting) {
       if (!EMPTY(j)) {
-         success(j, NULL, 0, 0);
+         uint32_t theDeepIndex = deepRowIndices[deepQHead + j - qHead];
+         
+         if(theDeepIndex > 1){
+            pRows = (row*) malloc((2*period + 1 + deepRows[theDeepIndex][0]
+                                   - deepRows[theDeepIndex][1] + 1) * (long long)sizeof(*pRows));
+            int m;
+            node x = j;
+            for(m = 2*period; m >= 0; --m){
+               pRows[m] = ROW(x);
+               x = PARENT(x);
+            }
+            memcpy(pRows + 2*period+1,
+                   deepRows[theDeepIndex] + 2 + deepRows[theDeepIndex][1],
+                   (deepRows[theDeepIndex][0] - deepRows[theDeepIndex][1] + 1) * (long long)sizeof(*pRows));
+            uint32_t currRow = 2*period + 1  + deepRows[theDeepIndex][0]
+                                             - deepRows[theDeepIndex][1]
+                                             + 1;
+            success(j, pRows, 2*period, currRow - 1);
+            free(pRows);
+         }
+         else{
+            success(j, NULL, 0, 0);
+         }
          if (allPhases == 0) {
             k=j;
             for (ph = 1; ph < period; ph++) {
