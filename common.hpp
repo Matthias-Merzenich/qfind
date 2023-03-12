@@ -920,6 +920,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    while(theBufRow++ < nrows){
       bufRow(ssrows[theBufRow], srows[theBufRow], 0);
    }
+   RLEcount = 1;
    RLEchar = '!';
    bufRLE('\0');
    sprintf(patternBuf+strlen(patternBuf),"\n");
