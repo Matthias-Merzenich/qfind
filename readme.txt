@@ -18,8 +18,8 @@ qfind.cpp:
 
 qfind-s.cpp
    A simplified version of qfind with fewer features that is slightly faster.
-   You must change the period, offset, and width of the desired search in the
-   code before compiling.  This version only allows gcd(period,offset) = 1.
+   You must change the period and offset of the desired search in the code
+   before compiling.  This version only allows gcd(period,offset) = 1.
    Compilation is otherwise the same.
 
 

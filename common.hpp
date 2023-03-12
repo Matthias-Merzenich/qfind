@@ -1508,12 +1508,11 @@ void usage(char *programName){
    printf("  searches Life (rule B3/S23) for c/3 orthogonal spaceships with\n");
    printf("  even bilateral symmetry and a logical width of 6 (full width 12).\n");
 #else
-   printf("Three required parameters, the period, offset, and width, must be\n");
-   printf("set within the code before it is compiled. You have compiled with\n");
+   printf("The period and offset must be set within the code before it is compiled.\n");
+   printf("You have compiled with\n");
    printf("\n");
    printf("Period: %d\n",PERIOD);
    printf("Offset: %d\n",OFFSET);
-   printf("Width:  %d\n",WIDTH);
 #endif
    printf("\n");
    printf("Available options:\n");
@@ -1523,9 +1522,9 @@ void usage(char *programName){
 #ifndef QSIMPLE
    printf("  -p NN  searches for spaceships with period NN\n");
    printf("  -y NN  searches for spaceships that travel NN cells every period\n");
+#endif
    printf("  -w NN  searches for spaceships with logical width NN\n");
    printf("         (full width depends on symmetry type)\n");
-#endif
    printf("  -s FF  searches for spaceships with symmetry type FF\n");
    printf("         Valid symmetry types are asymmetric, odd, even, and gutter.\n");
    printf("\n");
@@ -1667,43 +1666,47 @@ void checkParams(){
       exitFlag = 1;
    }
 #ifdef QSIMPLE
-   if(gcd(PERIOD,OFFSET) > 1){
+   if (gcd(PERIOD,OFFSET) > 1){
       fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
       exitFlag = 1;
+   }
+   if (params[P_WIDTH] < 1){
+       fprintf(stderr, "Error: width (-w) must be a positive integer.\n");
+       exitFlag = 1;
    }
 #else
    if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
       fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
       exitFlag = 1;
    }
-   if(params[P_PERIOD] > MAXPERIOD){
+   if (params[P_PERIOD] > MAXPERIOD){
       fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
       exitFlag = 1;
    }
-   if(params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+   if (params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
       fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
       exitFlag = 1;
    }
-   if(params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
+   if (params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
       fprintf(stderr, "Error: photons are not supported.\n");
       exitFlag = 1;
    }
 #endif
-   if(params[P_SYMMETRY] == 0){
+   if (params[P_SYMMETRY] == 0){
       fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
       exitFlag = 1;
    }
-   if(previewFlag && !loadDumpFlag){
+   if (previewFlag && !loadDumpFlag){
       fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
       exitFlag = 1;
    }
-   if(initRowsFlag && loadDumpFlag){
+   if (initRowsFlag && loadDumpFlag){
       fprintf(stderr, "Error: Initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
       exitFlag = 1;
    }
    
    /* Warnings */
-   if(2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
+   if (2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
       fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
    }
 #ifdef NOCACHE
@@ -1913,14 +1916,13 @@ void loadInitRows(char * file){
 
 void setDefaultParams(){
 #ifdef QSIMPLE
-   params[P_WIDTH] = WIDTH;
    params[P_PERIOD] = PERIOD;
    params[P_OFFSET] = OFFSET;
 #else
-   params[P_WIDTH] = 0;
    params[P_PERIOD] = 0;
    params[P_OFFSET] = 0;
 #endif
+   params[P_WIDTH] = 0;
    params[P_SYMMETRY] = 0;
    params[P_REORDER] = 1;
    params[P_CHECKPOINT] = 0;
@@ -1957,11 +1959,11 @@ void parseOptions(int argc, char *argv[]){
                --argc;
                sscanf(*++argv, "%d", &params[P_OFFSET]);
               break;
+#endif
             case 'w': case 'W':
                --argc;
                sscanf(*++argv, "%d", &params[P_WIDTH]);
                break;
-#endif
             case 's': case 'S':
                --argc;
                switch((*++argv)[0]) {

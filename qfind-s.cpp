@@ -1,6 +1,6 @@
 /* qfind-simple
 ** A Simplified version of qfind that is more limited but slightly faster.
-** You must set the desired period, offset, and width before compiling.
+** You must set the desired period and offset before compiling.
 */
 
 /*  Lookahead caching seems to speed up searches for spaceships with    */
@@ -13,16 +13,15 @@
 //#define NOCACHE
 //#define FORCECACHE
 
-/*  Change the following three values before compiling.  */
-/*  You must have gcd(PERIOD,OFFSET) = 1.                */
+/*  Change the following two values before compiling.  */
+/*  You must have gcd(PERIOD,OFFSET) = 1.              */
 #define PERIOD 5
 #define OFFSET 2
-#define WIDTH 8
 
 #define QSIMPLE
 
-#if WIDTH < 1 || PERIOD < 1 || OFFSET < 1
-   #error "Invalid value for PERIOD, OFFSET, or WIDTH."
+#if PERIOD < 1 || OFFSET < 1
+   #error "Invalid value for PERIOD or OFFSET."
 #endif
 
 #if OFFSET > PERIOD && PERIOD > 0
