@@ -15,8 +15,12 @@
 
 /*  Change the following two values before compiling.  */
 /*  You must have gcd(PERIOD,OFFSET) = 1.              */
-#define PERIOD 5
-#define OFFSET 2
+#ifndef PERIOD
+   #define PERIOD 5
+#endif
+#ifndef OFFSET
+   #define OFFSET 2
+#endif
 
 #define QSIMPLE
 
