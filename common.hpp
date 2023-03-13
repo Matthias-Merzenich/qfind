@@ -155,7 +155,7 @@ struct cacheentry **cache;
 #define PARENT(i) (base[(i)>>BASEBITS]+ROFFSET(i))
 #define FIRSTBASE(i) (((i) & ((1<<BASEBITS) - 1)) == 0)
 
-#define MINDEEP ((params[P_MINDEEP]>0) ? params[P_MINDEEP] : period)
+#define MINDEEP ((params[P_MINDEEP]>0) ? params[P_MINDEEP] : 3)
 
 int gcd(int a, int b) {
    if (a > b) return gcd(b,a);
@@ -1563,7 +1563,7 @@ void usage(char *programName){
    printf("         Valid symmetry types are asymmetric, odd, even, and gutter.\n");
    printf("\n");
    printf("  -t NN  runs search using NN threads during deepening step (default: 1)\n");
-   printf("  -i NN  sets minimum deepening increment to NN (default: period)\n");
+   printf("  -i NN  sets minimum deepening increment to NN (default: 3)\n");
    printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
    printf("         (total depth includes depth of BFS queue)\n");
    printf("  -g NN  stores depth-first extensions of length at least NN (default: 0)\n");
@@ -1964,7 +1964,7 @@ void setDefaultParams(){
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
-   params[P_MINDEEP] = 0;
+   params[P_MINDEEP] = 3;
    /* A negative value for params[P_CACHEMEM] means use that amount of memory */
    /* if speed > c/5 and turn off caching otherwise. A positive value forces  */
    /* caching even if speed <= c/5                                            */
