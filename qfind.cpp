@@ -1,7 +1,7 @@
 /* qfind --- A spaceship search program by Matthias Merzenich.
 ** 
-** Based on code by David Eppstein, "zdr", Paul Tooke, and Tomas Rokicki.
-** Thanks also to Aidan F. Pierce and Adam P. Goucher for code and suggestions.
+** Based on code by David Eppstein, zdr, Paul Tooke, and Tomas Rokicki.
+** Thanks also to praosylen and Adam P. Goucher for code and suggestions.
 **
 ** This is an attempt at combining the functionality of gfind and zfind.
 */

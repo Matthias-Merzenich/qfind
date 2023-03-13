@@ -1,6 +1,6 @@
 /* This header file contains functions common to both qfind and qfind-s.
 ** Some functions contained in this file work slightly differently depending
-** on whether qfind or or qfind-s is being compiled.  Such differences are
+** on whether qfind or qfind-s is being compiled.  Such differences are
 ** determined by the presence of the macro QSIMPLE defined in qfind-s.cpp.
 */
 
@@ -35,12 +35,12 @@
 #define P_PERIOD 1
 #define P_OFFSET 2
 #define P_SYMMETRY 3
-#define P_REORDER 4
+#define P_REORDER 4           /* currently cannot be set at runtime */
 #define P_CHECKPOINT 5
 #define P_BASEBITS 6
 #define P_QBITS 7
-#define P_HASHBITS 8 
-#define P_DEPTHLIMIT 9 
+#define P_HASHBITS 8
+#define P_DEPTHLIMIT 9        /* currently cannot be set at runtime */
 #define P_NUMTHREADS 10
 #define P_MINDEEP 11
 #define P_MEMLIMIT 12
@@ -58,15 +58,15 @@
 #define SYM_EVEN 3
 #define SYM_GUTTER 4
 
-const char *rule = "B3/S23";
-char loadRule[256]; /* used for loading rule from file */
+const char *rule = "B3/S23";     /* Default rule set to B3/S23 (Life) */
+char loadRule[256];              /* used for loading rule from file */
 
 char *initRows;
 
 int params[NUM_PARAMS];
 int width;
 int deepeningAmount;
-int nRowsInState;
+int nRowsInState;                /* Could be replaced with 2*period.  Should be removed. */
 int phase;
 
 int period;
@@ -141,7 +141,7 @@ struct cacheentry **cache;
 ** PARENT(b) returns the index of the parent of b
 */
 
-#define MAXWIDTH (14)
+#define MAXWIDTH (14)   /* hard limit as long as rows are of type uint16_t */
 
 #define ROWBITS ((1<<width)-1)
 #define BASEBITS (params[P_BASEBITS])
@@ -352,6 +352,10 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    return row4;
 }
 
+/* sortRows() is used to sort the global array valorder. This array    */
+/* determines the order in which new rows are added in the search. The */
+/* idea is that certain search orders give slightly quicker solutions  */
+/* during depthFirst() and LookAhead() than the naive order.           */
 void sortRows(uint16_t *theRow, uint32_t totalRows) {
    uint32_t i;
    int64_t j;
@@ -366,8 +370,11 @@ void sortRows(uint16_t *theRow, uint32_t totalRows) {
       theRow[j+1] = t;
    }
 }
+
 uint16_t *makeRow(int row1, int row2) ;
 
+/* getoffset() returns a pointer to a lookup table where further information */
+/* is found.  It is used in getoffsetcount() and in lookAhead().             */
 uint16_t *getoffset(int row12) {
    uint16_t *r = gInd3[row12] ;
    if (r == 0)
@@ -378,19 +385,31 @@ uint16_t *getoffset(int row1, int row2) {
    return getoffset((row1 << width) + row2) ;
 }
 
+/* Given rows row1, row2, and row3, getoffsetcount() gives the location (p) */
+/* in the lookup table containing rows XXXX such that                       */
+/*                                                                          */
+/*    row1   evolves into                                                   */
+/*    row2 ----------------> row3                                           */
+/*    XXXX                                                                  */
+/*                                                                          */
+/* as well as the number (n) of such rows.                                  */
 void getoffsetcount(int row1, int row2, int row3, uint16_t* &p, int &n) {
    uint16_t *theRow = getoffset(row1, row2) ;
    p = theRow + theRow[row3] ;
    n = theRow[row3+1] - theRow[row3] ;
 }
+
+// Like getoffsetcount(), but only gives the number of rows.  Currently unused.
 int getcount(int row1, int row2, int row3) {
    uint16_t *theRow = getoffset(row1, row2) ;
    return theRow[row3+1] - theRow[row3] ;
 }
+
 int *gWorkConcat ;      /* gWorkConcat to be parceled out between threads */
 int *rowHash ;
 uint16_t *valorder ;
 void genStatCounts() ;
+
 void makeTables() {
    causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth)<<width);
    gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2))) ;
@@ -407,10 +426,10 @@ void makeTables() {
    gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
    if (params[P_REORDER] == 1)
       genStatCounts() ;
-   if (params[P_REORDER] == 2)
+   if (params[P_REORDER] == 2)   /* this option currently cannot be set at runtime */
       for (int i=1; i<1<<width; i++)
          gcount[i] = 1 + gcount[i & (i - 1)] ;
-   gcount[0] = 0xffffffff;  /* Maximum value so empty row is chosen first */
+   gcount[0] = 0xffffffff;    /* Maximum value so empty row is chosen first */
    valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width) ;
    for (int i=0; i<1<<width; i++)
       valorder[i] = (1<<width)-1-i ;
@@ -419,8 +438,10 @@ void makeTables() {
    for (int row2=0; row2<1<<width; row2++)
       makeRow(0, row2) ;
 }
+
 uint16_t *bbuf ;
 int bbuf_left = 0 ;
+
 /* reduce fragmentation by allocating chunks larger than needed and */
 /* parceling out the small pieces.                                  */
 uint16_t *bmalloc(int siz) {
@@ -438,10 +459,14 @@ uint16_t *bmalloc(int siz) {
    bbuf_left -= siz ;
    return r ;
 }
+
 void unbmalloc(int siz) {
    bbuf -= siz ;
    bbuf_left += siz ;
 }
+
+/* hashRow() is used to identify if we've already */
+/* built an identical part of the lookup table.   */
 unsigned int hashRow(uint16_t *theRow, int siz) {
    unsigned int h = 0 ;
    for (int i=0; i<siz; i++)
@@ -455,6 +480,14 @@ uint16_t *makeRow(int row1, int row2) {
    int *gWork = gWorkConcat + ((3LL * omp_get_thread_num()) << width);
    int *gWork2 = gWork + (1 << width) ;
    int *gWork3 = gWork2 + (1 << width) ;
+   /* For each row3, find all row4 such that   */
+   /*                                          */
+   /*      row1   evolves into                 */
+   /*      row2 ----------------> row4         */
+   /*      row3                                */
+   /*                                          */
+   /* list of row4s is stored in gwork and     */
+   /* corresponding row3s are stored in gwork2 */
    if (width < 4) {
       for (int row3=0; row3<1<<width; row3++)
          gWork3[row3] = evolveRow(row1, row2, row3) ;
@@ -481,8 +514,8 @@ uint16_t *makeRow(int row1, int row2) {
       gWork[good++] = row4 ;
    }
    
-   /* bmalloc, unbmalloc, and all operations that read or write to row, */
-   /* rowHash, and gInd3 must be included in a critical region.         */
+   /* bmalloc, unbmalloc, and all operations that read from or write to */
+   /* theRow, rowHash, and gInd3 must be included in a critical region. */
    uint16_t *theRow;
    #pragma omp critical(updateTable)
    {
@@ -857,7 +890,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
       nrows--;
    }
    
-   /* sanity check: are all rows empty? */
+   /* sanity check: are all rows empty?  There should be a nonempty row. */
    int allEmpty = 1;
    for(i = 0; i < nrows; i++){
       if(srows[i]){
@@ -920,7 +953,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    while(theBufRow++ < nrows){
       bufRow(ssrows[theBufRow], srows[theBufRow], 0);
    }
-   RLEcount = 1;
+   RLEcount = 1;     /* prevents erroneous printing of '2' at end of RLE */
    RLEchar = '!';
    bufRLE('\0');
    sprintf(patternBuf+strlen(patternBuf),"\n");
@@ -957,7 +990,6 @@ int terminal(node n){
    return 1;
 }
 
-
 /* ================================================ */
 /*  Queue of partial patterns still to be examined  */
 /* ================================================ */
@@ -981,7 +1013,7 @@ int queuePhase = 0;
 node nextRephase = 0;
 void rephase() {
    node x, y;
-   while (qHead < qTail && EMPTY(qHead)) qHead++;   /* skip past empty queue cells */
+   while (qHead < qTail && EMPTY(qHead)) qHead++;   /* skip empty queue cells */
    x = qHead;   /* find next item in queue */
    queuePhase = period - 1;
    while (x != 0) {
@@ -1000,7 +1032,8 @@ void rephase() {
    nextRephase = y;
 }
 
-/* phase of an item on the queue */
+/* peekPhase() returns the phase of an element in the queue.  This only */
+/* works for queue elements and should NOT be used on other nodes.      */
 int peekPhase(node i) {
    return (i < nextRephase? queuePhase : (queuePhase+1)%period);
 }
@@ -1062,6 +1095,7 @@ static inline node dequeue() {
    return qHead++;
 }
 
+/* Not used, but could be useful in debugging */
 static inline void pop() {
    qTail--;
    while (qTail > qHead && EMPTY(qTail-1)) qTail--;
@@ -1924,15 +1958,18 @@ void setDefaultParams(){
 #endif
    params[P_WIDTH] = 0;
    params[P_SYMMETRY] = 0;
-   params[P_REORDER] = 1;
+   params[P_REORDER] = 1;     /* 0 and 2 are also valid values, but this cannot currently be set at runtime. */
    params[P_CHECKPOINT] = 0;
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
    params[P_MINDEEP] = 0;
-   params[P_CACHEMEM] = -1*DEFAULT_CACHEMEM;
-   params[P_MEMLIMIT] = -1;
+   /* A negative value for params[P_CACHEMEM] means use that amount of memory */
+   /* if speed > c/5 and turn off caching otherwise. A positive value forces  */
+   /* caching even if speed <= c/5                                            */
+   params[P_CACHEMEM] = -1*DEFAULT_CACHEMEM; 
+   params[P_MEMLIMIT] = -1;                     
    params[P_PRINTDEEP] = 1;
    params[P_LONGEST] = 1;
    params[P_LASTDEEP] = 0;
