@@ -39,8 +39,8 @@ void makePhases(){
 }
 
 int lookAhead(row *pRows, int a, int pPhase){
-/* indices: first digit represents vertical offset,      */
-/*          second digit represents generational offset  */
+   /* indices: first digit represents vertical offset,      */
+   /*          second digit represents generational offset  */
    int ri11, ri12, ri13, ri22, ri23;
    uint16_t *riStart11, *riStart12, *riStart13, *riStart22, *riStart23;
    int numRows11, numRows12, numRows13, numRows22, numRows23;
@@ -115,6 +115,115 @@ int lookAhead(row *pRows, int a, int pPhase){
    return 0;
 }
 
+/*
+** For each possible phase of the ship, equivRow[0][phase] gives the row that 
+** is equivalent if the pattern is subperiodic with a specified period.
+** equivRow[1] is necessary if gcd(period,offset) has two distinct prime 
+** divisors, as two subperiods need to be tested (e.g., if speed == 6c/12, we
+** must test subperiods 4 and 6).
+*/
+
+int equivRow[2][MAXPERIOD];
+
+int smallestDivisor(int b){
+   int c = 2;
+   while(b % c) ++c;
+   return c;
+}
+
+void makeEqRows(int maxFactor, int divNum){
+   int tempEquivRow[MAXPERIOD];
+   int i,j;
+   for(i = 0; i < period; ++i){
+      tempEquivRow[i] = i;
+      for(j = 0; j < maxFactor; ++j){
+         tempEquivRow[i] += backOff[tempEquivRow[i] % period];
+      }
+      tempEquivRow[i] -= offset * maxFactor + i;
+      equivRow[divNum][i] = tempEquivRow[i];
+   }
+   for(i = 0; i < period; ++i){     /* make equivRow[i] negative if possible */
+      if(tempEquivRow[i] > 0){
+         equivRow[divNum][i + tempEquivRow[i]] = -1 * tempEquivRow[i];
+      }
+   }
+}
+
+int subperiodTest(node x, int divNum, row *pRows, int nodeRow, uint32_t lastRow){
+   int i,a;
+   node y,z;
+   
+   int pPhase;
+   
+   pPhase = (peekPhase(x) + lastRow - nodeRow) % period + period;
+   a = lastRow;   /* lastRow == 0 when calling from queue */
+   while (equivRow[divNum][pPhase % period] >= 0){
+      pPhase--;
+      a--;
+   }
+   
+   if (pRows != NULL){
+      int b = a + equivRow[divNum][pPhase % period];
+      
+      while (b > nodeRow){
+         if (pRows[a] != pRows[b])
+            return 0;
+         a -= period;
+         b -= period;
+      }
+      z = x;
+      for (i=0; i < (nodeRow - b); i++) z = PARENT(z);
+      
+      if (a > nodeRow){
+         if (pRows[a] != ROW(z))
+            return 0;
+         a -= period;
+         for (i=0; i < period; i++)
+            z = PARENT(z);
+      }
+      y = x;
+      for (i=0; i < (nodeRow - a); i++)
+         y = PARENT(y);
+      
+      
+   }
+   else {
+      y = x;
+      for(i=0; i < -1 * a; i++)
+         y = PARENT(y);
+      z = y;
+      for(i=0; i < -1 * equivRow[divNum][pPhase % period]; i++)
+         z = PARENT(z);
+   }
+   
+   while (z != 0){
+      if (ROW(y) != ROW(z))
+         return 0;
+      
+      for (i=0; i < period; i++){
+         y = PARENT(y);
+         z = PARENT(z);
+      }
+   }
+   return 1;
+}
+
+int subperiodic(node x, row *pRows, int nodeRow, uint32_t lastRow){
+   if (!params[P_FULLPERIOD] || gcd(period,offset) == 1)
+      return 0;
+   
+   if (subperiodTest(x,0,pRows,nodeRow,lastRow) || subperiodTest(x,1,pRows,nodeRow,lastRow))
+      return 1;
+   
+   return 0;
+}
+
+
+/* 
+** process() dequeues the node at the head of the queue and enqueues any valid
+** child nodes.  Spaceships are detected by a call to terminal().
+*/
+
 void process(node theNode)
 {
    long long int i;
@@ -139,7 +248,8 @@ void process(node theNode)
                      pRows[currRow - period + backOff[pPhase]],
                      riStart, numRows);
    
-   /* we just ran dequeue() so we need to look at the previous head location */
+   /* we just ran dequeue() which changed DeepQHead so */
+   /* we need to look at the previous head location    */
    uint32_t deepIndex = deepRowIndices[oldDeepQHead];
    
    if(theNode == 0){
@@ -173,7 +283,7 @@ void process(node theNode)
                if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
                longest = currentDepth();
             }
-            if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
+            if (terminal(qTail-1) && !terminal(PARENT(qTail-1)) && !subperiodic(qTail-1,NULL,0,0)) success(qTail-1, NULL, 0, 0);
             setVisited(qTail - 1);
             if(deepRows[deepIndex][1] > deepRows[deepIndex][0]){
                deepRowIndices[deepQTail - 1] = 0;
@@ -200,7 +310,7 @@ void process(node theNode)
             if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
             longest = currentDepth();
          }
-         if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
+         if (terminal(qTail-1) && !terminal(PARENT(qTail-1)) && !subperiodic(qTail-1,NULL,0,0)) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
       }
    }
@@ -333,7 +443,9 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
          for(i = 1; i <= period; ++i){
             if(causesBirth[pRows[currRow - i]]) return 1;
          }
+         
          /* If we got here, then we found a spaceship! */
+         if (subperiodic(theNode, pRows, startRow - 1, currRow + period - 1)) return 1;
          #pragma omp critical(printWhileDeepening)
          {
             success(theNode, pRows, startRow - 1, currRow + period - 1);
@@ -352,7 +464,8 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
 int main(int argc, char *argv[]){
    printf("%s\n",BANNER);
    printf("Input:");
-   for (int i=0; i<argc; i++)
+   int i;
+   for (i=0; i<argc; i++)
       printf(" %s", argv[i]);
    printf("\n\n");
    
@@ -361,6 +474,18 @@ int main(int argc, char *argv[]){
    parseOptions(argc, argv);
    
    searchSetup();
+   
+   /* make phase tables for determining equivalent subperiodic rows */
+   if(gcd(period,offset) > 1){
+      int div1 = smallestDivisor(gcd(period,offset));
+      makeEqRows(period / div1,0);
+      int div2 = gcd(period,offset);
+      while(div2 % div1 == 0) div2 /= div1;
+      if(div2 != 1)
+         makeEqRows(period / smallestDivisor(div2),1);
+      else                                /* If gcd(period,offset) has only one prime divisor, just  */
+         makeEqRows(period / div1,1);     /* reuse it.  We don't run the subperiod check very often. */
+   }
    
    printf("Starting search\n");
    fflush(stdout);

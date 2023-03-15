@@ -50,8 +50,9 @@
 #define P_LASTDEEP 16
 #define P_NUMSHIPS 17
 #define P_MINEXTENSION 18
+#define P_FULLPERIOD 19
 
-#define NUM_PARAMS 19
+#define NUM_PARAMS 20
 
 #define SYM_ASYM 1
 #define SYM_ODD 2
@@ -399,7 +400,7 @@ void getoffsetcount(int row1, int row2, int row3, uint16_t* &p, int &n) {
    n = theRow[row3+1] - theRow[row3] ;
 }
 
-// Like getoffsetcount(), but only gives the number of rows.  Currently unused.
+/* Like getoffsetcount(), but only gives the number of rows.  Currently unused. */
 int getcount(int row1, int row2, int row3) {
    uint16_t *theRow = getoffset(row1, row2) ;
    return theRow[row3+1] - theRow[row3] ;
@@ -1582,6 +1583,10 @@ void usage(char *programName){
    printf("  -z     toggles whether to output spaceships found during deepening step\n");
    printf("         (default: output enabled for spaceships found during deepening step)\n");
    printf("         Disabling is useful for searches that find many spaceships.\n");
+#ifndef QSIMPLE
+   printf("  -k     toggles whether to output subperiodic spaceships\n");
+   printf("         (default: output enabled for subperiodic spaceships)\n");
+#endif
    printf("  -a     toggles whether to output longest partial result at end of search\n");
    printf("         (default: output enabled for longest partial result)\n");
    printf("\n");
@@ -1965,16 +1970,17 @@ void setDefaultParams(){
    params[P_HASHBITS] = HASHBITS;
    params[P_NUMTHREADS] = 1;
    params[P_MINDEEP] = 3;
-   /* A negative value for params[P_CACHEMEM] means use that amount of memory */
-   /* if speed > c/5 and turn off caching otherwise. A positive value forces  */
-   /* caching even if speed <= c/5                                            */
-   params[P_CACHEMEM] = -1*DEFAULT_CACHEMEM; 
-   params[P_MEMLIMIT] = -1;                     
+   /* A negative value for params[P_CACHEMEM] means use that amount of  */
+   /* memory if speed > c/5 and turn off caching otherwise.  A positive */
+   /* value forces caching even if speed <= c/5.                        */
+   params[P_CACHEMEM] = -1*DEFAULT_CACHEMEM;
+   params[P_MEMLIMIT] = -1;   /* negative value means no limit */
    params[P_PRINTDEEP] = 1;
    params[P_LONGEST] = 1;
    params[P_LASTDEEP] = 0;
    params[P_NUMSHIPS] = 0;
    params[P_MINEXTENSION] = 0;
+   params[P_FULLPERIOD] = 0;
 }
 
 /* Note: currently reserving -v for potentially editing an array of extra variables */
@@ -1995,7 +2001,10 @@ void parseOptions(int argc, char *argv[]){
             case 'y': case 'Y':
                --argc;
                sscanf(*++argv, "%d", &params[P_OFFSET]);
-              break;
+               break;
+            case 'k': case 'K':
+               params[P_FULLPERIOD] ^= 1;
+               break;
 #endif
             case 'w': case 'W':
                --argc;
