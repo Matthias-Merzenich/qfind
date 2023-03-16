@@ -51,9 +51,11 @@
 #define P_NUMSHIPS 17
 #define P_MINEXTENSION 18
 #define P_FULLPERIOD 19
+#define P_BOUNDARYSYM 20
 
-#define NUM_PARAMS 20
+#define NUM_PARAMS 21
 
+#define SYM_UNDEF 0
 #define SYM_ASYM 1
 #define SYM_ODD 2
 #define SYM_EVEN 3
@@ -302,8 +304,10 @@ int evolveRow(int row1, int row2, int row3){
    int row4;
    int row1_s,row2_s,row3_s;
    int j,s = 0;
+   int t = 0;
    if(params[P_SYMMETRY] == SYM_ODD) s = 1;
-   if(evolveBit(row1, row2, row3, width - 1)) return -1;
+   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
+   if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
    if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
    if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
       row1_s = (row1 << 1) + ((row1 >> s) & 1);
@@ -315,6 +319,11 @@ int evolveRow(int row1, int row2, int row3){
       row2_s = (row2 << 1);
       row3_s = (row3 << 1);
    }
+   if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
+      row1 += ((row1 >> (width-1-t)) & 1) << (width);
+      row2 += ((row2 >> (width-1-t)) & 1) << (width);
+      row3 += ((row3 >> (width-1-t)) & 1) << (width);
+   }
    row4 = evolveBit(row1_s, row2_s, row3_s);
    for(j = 1; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
    return row4;
@@ -322,12 +331,14 @@ int evolveRow(int row1, int row2, int row3){
 
 int evolveRowHigh(int row1, int row2, int row3, int bits){
    int row4=0;
-   int row1_s,row2_s,row3_s;
-   int j ;
-   if(evolveBit(row1, row2, row3, width - 1)) return -1;
-   row1_s = (row1 << 1);
-   row2_s = (row2 << 1);
-   row3_s = (row3 << 1);
+   int j,t = 0;
+   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
+   if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
+   if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
+      row1 += ((row1 >> (width-1-t)) & 1) << (width);
+      row2 += ((row2 >> (width-1-t)) & 1) << (width);
+      row3 += ((row3 >> (width-1-t)) & 1) << (width);
+   }
    for(j = width-bits; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
    return row4;
 }
@@ -1562,6 +1573,9 @@ void usage(char *programName){
    printf("         (full width depends on symmetry type)\n");
    printf("  -s FF  searches for spaceships with symmetry type FF\n");
    printf("         Valid symmetry types are asymmetric, odd, even, and gutter.\n");
+   printf("  -o FF  searches for waves with boundary symmetry type FF\n");
+   printf("         (default: wave search disabled)\n");
+   printf("         Valid symmetry types are odd, even, gutter, and disabled.\n");
    printf("\n");
    printf("  -t NN  runs search using NN threads during deepening step (default: 1)\n");
    printf("  -i NN  sets minimum deepening increment to NN (default: 3)\n");
@@ -1731,8 +1745,12 @@ void checkParams(){
       exitFlag = 1;
    }
 #endif
-   if (params[P_SYMMETRY] == 0){
+   if (params[P_SYMMETRY] == SYM_UNDEF){
       fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
+      exitFlag = 1;
+   }
+   if (params[P_BOUNDARYSYM] == SYM_ASYM){
+      fprintf(stderr, "Error: asymmetric wave searching is not supported.\n");
       exitFlag = 1;
    }
    if (previewFlag && !loadDumpFlag){
@@ -1740,7 +1758,7 @@ void checkParams(){
       exitFlag = 1;
    }
    if (initRowsFlag && loadDumpFlag){
-      fprintf(stderr, "Error: Initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
+      fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
       exitFlag = 1;
    }
    
@@ -1962,7 +1980,7 @@ void setDefaultParams(){
    params[P_OFFSET] = 0;
 #endif
    params[P_WIDTH] = 0;
-   params[P_SYMMETRY] = 0;
+   params[P_SYMMETRY] = SYM_UNDEF;
    params[P_REORDER] = 1;     /* 0 and 2 are also valid values, but this cannot currently be set at runtime. */
    params[P_CHECKPOINT] = 0;
    params[P_BASEBITS] = 4;
@@ -1981,6 +1999,7 @@ void setDefaultParams(){
    params[P_NUMSHIPS] = 0;
    params[P_MINEXTENSION] = 0;
    params[P_FULLPERIOD] = 0;
+   params[P_BOUNDARYSYM] = SYM_UNDEF;
 }
 
 /* Note: currently reserving -v for potentially editing an array of extra variables */
@@ -2021,6 +2040,26 @@ void parseOptions(int argc, char *argv[]){
                      params[P_SYMMETRY] = SYM_EVEN; mode = even; break;
                   case 'g': case 'G':
                      params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
+                  default:
+                     fprintf(stderr, "Error: unrecognized symmetry type %s\n", *argv);
+                     fprintf(stderr, "\nUse --help for a list of available options.\n");
+                     exit(1);
+                     break;
+               }
+               break;
+            case 'o': case 'O':
+               --argc;
+               switch((*++argv)[0]) {
+                  case 'a': case 'A':
+                     params[P_BOUNDARYSYM] = SYM_ASYM; break;
+                  case 'o': case 'O':
+                     params[P_BOUNDARYSYM] = SYM_ODD; break;
+                  case 'e': case 'E':
+                     params[P_BOUNDARYSYM] = SYM_EVEN; break;
+                  case 'g': case 'G':
+                     params[P_BOUNDARYSYM] = SYM_GUTTER; break;
+                  case 'd': case 'D':
+                     params[P_BOUNDARYSYM] = SYM_UNDEF; break;
                   default:
                      fprintf(stderr, "Error: unrecognized symmetry type %s\n", *argv);
                      fprintf(stderr, "\nUse --help for a list of available options.\n");
