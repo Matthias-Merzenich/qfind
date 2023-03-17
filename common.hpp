@@ -980,8 +980,16 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    return 1;
 }
 
+#ifndef QSIMPLE
+void makeSubperiodTables();
+int subperiodic(node x, row *pRows, int nodeRow, uint32_t lastRow);
+#endif
+
 void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
-   if(bufferPattern(b, pRows, nodeRow, lastRow, 1))
+#ifndef QSIMPLE
+   if (subperiodic(b, pRows, nodeRow, lastRow)) return;
+#endif
+   if (bufferPattern(b, pRows, nodeRow, lastRow, 1))
       printf("\n%s\n",patternBuf);
    fflush(stdout);
 }
@@ -2208,6 +2216,11 @@ void searchSetup(){
       if(initRowsFlag) loadInitRows(initRows);
    }
    
+#ifndef QSIMPLE
+   makePhases();
+   makeSubperiodTables();
+#endif
+   
    if(previewFlag){
       preview(1);
       exit(0);
@@ -2375,9 +2388,6 @@ void searchSetup(){
    
    echoParams();
    
-#ifndef QSIMPLE
-   makePhases();
-#endif
    fasterTable();
    makeTables();
    

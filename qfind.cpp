@@ -115,7 +115,8 @@ int lookAhead(row *pRows, int a, int pPhase){
    return 0;
 }
 
-/*
+/* Testing for subperiodic patterns
+**
 ** For each possible phase of the ship, equivRow[0][phase] gives the row that 
 ** is equivalent if the pattern is subperiodic with a specified period.
 ** equivRow[1] is necessary if gcd(period,offset) has two distinct prime 
@@ -146,6 +147,20 @@ void makeEqRows(int maxFactor, int divNum){
       if(tempEquivRow[i] > 0){
          equivRow[divNum][i + tempEquivRow[i]] = -1 * tempEquivRow[i];
       }
+   }
+}
+
+/* make phase tables for determining equivalent subperiodic rows */
+void makeSubperiodTables(){
+   if(gcd(period,offset) > 1){
+      int div1 = smallestDivisor(gcd(period,offset));
+      makeEqRows(period / div1,0);
+      int div2 = gcd(period,offset);
+      while(div2 % div1 == 0) div2 /= div1;
+      if(div2 != 1)
+         makeEqRows(period / smallestDivisor(div2),1);
+      else                                /* If gcd(period,offset) has only one prime divisor, just  */
+         makeEqRows(period / div1,1);     /* reuse it.  We don't run the subperiod check very often. */
    }
 }
 
@@ -283,7 +298,7 @@ void process(node theNode)
                if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
                longest = currentDepth();
             }
-            if (terminal(qTail-1) && !terminal(PARENT(qTail-1)) && !subperiodic(qTail-1,NULL,0,0)) success(qTail-1, NULL, 0, 0);
+            if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
             setVisited(qTail - 1);
             if(deepRows[deepIndex][1] > deepRows[deepIndex][0]){
                deepRowIndices[deepQTail - 1] = 0;
@@ -310,7 +325,7 @@ void process(node theNode)
             if(params[P_LONGEST]) bufferPattern(qTail-1, NULL, 0, 0, 0);
             longest = currentDepth();
          }
-         if (terminal(qTail-1) && !terminal(PARENT(qTail-1)) && !subperiodic(qTail-1,NULL,0,0)) success(qTail-1, NULL, 0, 0);
+         if (terminal(qTail-1) && !terminal(PARENT(qTail-1))) success(qTail-1, NULL, 0, 0);
          setVisited(qTail - 1);
       }
    }
@@ -445,7 +460,6 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
          }
          
          /* If we got here, then we found a spaceship! */
-         if (subperiodic(theNode, pRows, startRow - 1, currRow + period - 1)) return 1;
          #pragma omp critical(printWhileDeepening)
          {
             success(theNode, pRows, startRow - 1, currRow + period - 1);
