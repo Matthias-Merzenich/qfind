@@ -22,7 +22,7 @@
 
 #define BANNER XSTR(WHICHPROGRAM)" v2.2 by Matthias Merzenich, 21 June 2022"
 
-#define FILEVERSION ((unsigned long) 2021050301)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2023031701)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -902,7 +902,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
       nrows--;
    }
    
-   /* sanity check: are all rows empty?  There should be a nonempty row. */
+   /* sanity check: is the pattern nonempty? */
    int allEmpty = 1;
    for(i = 0; i < nrows; i++){
       if(srows[i]){
@@ -939,7 +939,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    /* compute margin on other side of width */
    margin = 0;
 
-   /* make sure we didn't just output the exact same pattern (happens a lot for puffer) */
+   /* make sure we didn't just output the exact same pattern */
    if(printExpected){
       if (nrows == oldnrows) {
          int different = 0;
@@ -1014,10 +1014,9 @@ int terminal(node n){
 /*  Queue of partial patterns still to be examined  */
 /* ================================================ */
 
-/* SU patch */
 node qHead,qTail;
 
-/* PATCH queue dimensions required during save/restore */
+/* Queue dimensions required during save/restore */
 node qStart; /* index of first node in queue */
 node qEnd;   /* index of first unused node after end of queue */
 
@@ -1432,7 +1431,7 @@ static void deepen(){
    node i;
 
    /* compute amount to deepen, apply reduction if too deep */
-#ifdef PATCH07
+#ifdef TIMESTAMP
    timeStamp();
 #endif
    printf("Queue full");
@@ -1493,7 +1492,7 @@ static void deepen(){
    /* Report successful/unsuccessful dump */
    if (dumpFlag == DUMPSUCCESS)
    {
-#ifdef PATCH07
+#ifdef TIMESTAMP
       timeStamp();
 #endif
        printf("State dumped to %s\n",dumpFile);
@@ -1505,7 +1504,7 @@ static void deepen(){
    }
    else if (dumpFlag == DUMPFAILURE)
    {
-#ifdef PATCH07
+#ifdef TIMESTAMP
       timeStamp();
 #endif
       printf("State dump unsuccessful\n");
@@ -1584,6 +1583,9 @@ void usage(char *programName){
    printf("  -o FF  searches for waves with boundary symmetry type FF\n");
    printf("         (default: wave search disabled)\n");
    printf("         Valid symmetry types are odd, even, gutter, and disabled.\n");
+   printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
+   printf("         (use the companion Golly Lua script to easily generate the\n");
+   printf("         initial row file)\n");
    printf("\n");
    printf("  -t NN  runs search using NN threads during deepening step (default: 1)\n");
    printf("  -i NN  sets minimum deepening increment to NN (default: 3)\n");
@@ -1594,7 +1596,6 @@ void usage(char *programName){
    printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
    printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
    printf("         Use -h 0 to disable duplicate elimination.\n");
-
    printf("  -b NN  groups 2^NN queue entries to an index node (default: 4)\n");
    printf("  -m NN  limits memory usage to NN megabytes (default: no limit)\n");
 #ifndef NOCACHE
@@ -1612,9 +1613,6 @@ void usage(char *programName){
    printf("  -a     toggles whether to output longest partial result at end of search\n");
    printf("         (default: output enabled for longest partial result)\n");
    printf("\n");
-   printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
-   printf("         (use the companion Golly Lua script to easily generate the\n");
-   printf("         initial row file)\n");
    printf("  -d FF  dumps the search state after each queue compaction using\n");
    printf("         file name prefix FF\n");
    printf("  -l FF  loads the search state from the file FF\n");
@@ -1638,6 +1636,15 @@ void echoParams(){
    else if (params[P_SYMMETRY] == SYM_ODD) printf("Symmetry: odd\n");
    else if (params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
    else if (params[P_SYMMETRY] == SYM_GUTTER) printf("Symmetry: gutter\n");
+   if (params[P_BOUNDARYSYM] != SYM_UNDEF){
+      printf("Wave search enabled\nBoundary symmetry: ");
+      if (params[P_BOUNDARYSYM] == SYM_ODD) printf("odd\n");
+      else if (params[P_BOUNDARYSYM] == SYM_EVEN) printf("even\n");
+      else if (params[P_BOUNDARYSYM] == SYM_GUTTER) printf("gutter\n");
+   }
+#ifndef QSIMPLE
+   if (params[P_FULLPERIOD] && gcd(period,offset)>1) printf("Suppress subperiodic results\n");
+#endif
    if (params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
@@ -2397,7 +2404,7 @@ void searchSetup(){
 void finalReport(){
    printf("Search complete.\n\n");
    
-   printf("%d spaceship%s found.\n",numFound,(numFound == 1) ? "" : "s");
+   printf("%d %s%s found.\n",numFound,(params[P_BOUNDARYSYM] == SYM_UNDEF) ? "spaceship" : "wave",(numFound == 1) ? "" : "s");
    printf("Maximum depth reached: %d\n",longest);
    if(params[P_LONGEST] && aborting != 3){ /* aborting == 3 means we reached ship limit */
       if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
