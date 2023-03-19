@@ -1,4 +1,4 @@
-qfind v2.2
+qfind v2.3
 
 qfind is a spaceship search program for Conway's Game of Life and related
 cellular automata written by Matthias Merzenich.  It is based on David
@@ -80,6 +80,13 @@ Version History:
       Orient output to travel upward
       Print extension rows when previewing partial results
       Fix potential heap overflow bugs
+   2.3, 19 March 2023
+      Add option to only print full-period results
+      Add symmetric wave searching
+      Allow setting width at run-time in qfind-s
+      Allow setting period and offset in command line when compiling qfind-s
+      Change default minimum deepening increment
+      Fix minor RLE output bug
 
 ------------------------------------------------------------------------------
 Matthias Merzenich

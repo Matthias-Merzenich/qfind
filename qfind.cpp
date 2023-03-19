@@ -199,8 +199,6 @@ int subperiodTest(node x, int divNum, row *pRows, int nodeRow, uint32_t lastRow)
       y = x;
       for (i=0; i < (nodeRow - a); i++)
          y = PARENT(y);
-      
-      
    }
    else {
       y = x;
