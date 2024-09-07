@@ -166,6 +166,20 @@ int gcd(int a, int b) {
    else return gcd(b-a,a);
 }
 
+/* =============================== */
+/*  Display current date and time  */
+/* =============================== */
+
+static char timeStr[20] = "00/00/00 00:00:00 ";
+
+static void timeStamp() {
+   time_t t;
+   
+   time(&t);
+   strftime(timeStr, 20, "%d/%m/%y %H:%M:%S ", localtime(&t));
+   printf("%s", timeStr);
+}
+
 /* =========================================== */
 /*  Lookup tables to determine successor rows  */
 /* =========================================== */
@@ -1431,9 +1445,7 @@ static void deepen(){
    node i;
 
    /* compute amount to deepen, apply reduction if too deep */
-#ifdef TIMESTAMP
    timeStamp();
-#endif
    printf("Queue full");
    i = currentDepth();
    if (i >= params[P_LASTDEEP]) deepeningAmount = MINDEEP;
@@ -1492,9 +1504,7 @@ static void deepen(){
    /* Report successful/unsuccessful dump */
    if (dumpFlag == DUMPSUCCESS)
    {
-#ifdef TIMESTAMP
       timeStamp();
-#endif
        printf("State dumped to %s\n",dumpFile);
        /*analyse();
        if (chainWidth)
@@ -1504,9 +1514,7 @@ static void deepen(){
    }
    else if (dumpFlag == DUMPFAILURE)
    {
-#ifdef TIMESTAMP
       timeStamp();
-#endif
       printf("State dump unsuccessful\n");
    }
    
@@ -1660,6 +1668,7 @@ void echoParams(){
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
    if (params[P_MINEXTENSION]) printf("Save depth-first extensions of length at least %d\n",params[P_MINEXTENSION]);
    if (params[P_LONGEST] == 0) printf("Printing of longest partial result disabled\n");
+   printf("\n");
 }
 
 /* ========================= */
@@ -2367,7 +2376,6 @@ void searchSetup(){
          free(hash);
          free(deepRows);
          free(deepRowIndices);
-         
       }
       
       printf("Saved pieces in files %s%05d to %s\n",dumpRoot,firstDumpNum,dumpFile);
@@ -2402,9 +2410,12 @@ void searchSetup(){
    makeTables();
    
    rephase();
+   
+   timeStamp();
 }
 
 void finalReport(){
+   timeStamp();
    printf("Search complete.\n\n");
    
    printf("%d %s%s found.\n",numFound,(params[P_BOUNDARYSYM] == SYM_UNDEF) ? "spaceship" : "wave",(numFound == 1) ? "" : "s");
