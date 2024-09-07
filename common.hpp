@@ -1816,24 +1816,21 @@ void checkParams(){
 
 char * loadFile;
 
-void loadFail()
-{
-    printf("Load from file %s failed\n",loadFile);
-    exit(1);
+void loadFail(){
+   fprintf(stderr, "Load from file %s failed\n", loadFile);
+   exit(1);
 }
 
-signed int loadInt(FILE *fp)
-{
-    signed int v;
-    if (fscanf(fp,"%d\n",&v) != 1) loadFail();
-    return v;
+signed int loadInt(FILE *fp){
+   signed int v;
+   if (fscanf(fp,"%d\n",&v) != 1) loadFail();
+   return v;
 }
 
-unsigned int loadUInt(FILE *fp)
-{
-    unsigned int v;
-    if (fscanf(fp,"%u\n",&v) != 1) loadFail();
-    return v;
+unsigned int loadUInt(FILE *fp){
+   unsigned int v;
+   if (fscanf(fp,"%u\n",&v) != 1) loadFail();
+   return v;
 }
 
 void loadParams() {
@@ -1845,8 +1842,7 @@ void loadParams() {
    
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
-   if (loadUInt(fp) != FILEVERSION)
-   {
+   if (loadUInt(fp) != FILEVERSION){
       printf("Incompatible file version\n");
       exit(1);
    }
@@ -1871,9 +1867,10 @@ void loadState(){
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
    
+   /* Skip lines that are loaded in loadParams() */
    loadUInt(fp);                                   /* skip file version */
-   fscanf(fp, "%*[^\n]\n");                        /* skip rule */
-   fscanf(fp, "%*[^\n]\n");                        /* skip dump root */
+   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();   /* skip rule */
+   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();   /* skip dump root */
    for (i = 0; i < NUM_PARAMS; ++i) loadInt(fp);   /* skip parameters */
    
    /* Load / initialise globals */
@@ -1932,7 +1929,7 @@ void loadState(){
    
    while (fscanf(fp,"%u\n",&j) != EOF){
       if (j == 0){
-         fscanf(fp,"%u\n",&j);
+         j = loadUInt(fp);
          for (i = 0; i < j; ++i){
             deepRowIndices[deepQTail] = 1;
             ++deepQTail;
@@ -1982,7 +1979,7 @@ void loadInitRows(char * file){
    printf("Starting search from rows in %s:\n",loadFile);
    
    for(i = 0; i < 2 * period; i++){
-      fscanf(fp,"%s",rowStr);
+      if (fscanf(fp,"%s",rowStr) != 1) loadFail();
       for(j = 0; j < width; j++){
          theRow |= ((rowStr[width - j - 1] == '.') ? 0:1) << j;
       }
