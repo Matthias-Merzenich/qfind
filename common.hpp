@@ -1230,8 +1230,8 @@ long currentDepth() {
 }
 
 /*
-** doCompact() now has two parts.  The first part compresses
-** the queue.  The second part consists of the last loop which
+** doCompact() has two parts.  The first part compresses the
+** queue.  The second part consists of the last loop which
 ** converts parent bits to back parent pointers.  The search
 ** state may be saved in between.  The queue dimensions, which
 ** were previously saved in local variables are saved in globals.
@@ -1666,7 +1666,7 @@ void echoParams(){
 /*  Preview partial results  */
 /* ========================= */
 
-static void preview(int allPhases) {
+static void preview(/*int allPhases*/) {
    node i,j,k;
    row *pRows;
    int ph;
@@ -1700,13 +1700,15 @@ static void preview(int allPhases) {
          else{
             success(j, NULL, 0, 0);
          }
-         if (allPhases == 0) {
+         /*
+         if (allPhases) {
             k=j;
             for (ph = 1; ph < period; ph++) {
                k=PARENT(k);
                success(k, NULL, 0, 0);
             }
          }
+         */
       }
       j--;
    }
@@ -2229,7 +2231,8 @@ void searchSetup(){
 #endif
    
    if(previewFlag){
-      preview(1);
+      params[P_NUMSHIPS] = 0;
+      preview();
       exit(0);
    }
    
