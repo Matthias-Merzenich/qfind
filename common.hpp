@@ -62,7 +62,9 @@
 #define SYM_GUTTER 4
 
 const char *rule = "B3/S23";     /* Default rule set to B3/S23 (Life) */
-char loadRule[256];              /* used for loading rule from file */
+char loadRule[256];              /* Used for loading rule from file */
+char trueRule[256];              /* Used in case of forbidden conditions */
+int forbiddenBirths = 0;         /* Used to indicate if there are forbidden birth conditions */
 
 char *initRows;
 
@@ -234,16 +236,31 @@ const char *parseRule(const char *rule, int *tab) {
             return "Expected S after slash" ;
       }
       p++ ;
-      while (*p != '/' && *p != 0) {
-         if (!('0' <= *p || *p <= '9'))
+      int allowed = 1 ;
+      while (*p != '/' && *p != '\0') {
+         if (*p == '~'){
+            p++ ;
+            if (allowed == -1 || *p == '~'){
+               if (bs)
+                  return "Can't have multiple tildes in survival conditions" ;
+               else
+                  return "Can't have multiple tildes in birth conditions" ;
+            }
+            if (*p == '/' || *p == '\0')
+               continue ;
+            allowed = -1 ;  /* table entry will be -1 if condition is forbidden */
+         }
+         if (!('0' <= *p && *p <= '9'))
             return "Missing number in rule" ;
+         if (*p == '9')
+            return "Unexpected character in rule" ;
          char dig = *p++ ;
          int neg = 0 ;
-         if (*p == '/' || *p == 0 || *p == '-' || ('0' <= *p && *p <= '8'))
+         if (*p == '/' || *p == '\0' || *p == '-' || *p == '~' || ('0' <= *p && *p <= '8'))
             for (int i=0; i<256; i++)
                if (rulekeys[i][0] == dig)
-                  tab[bs+i] = 1 ;
-         for (; *p != '/' && *p != 0 && !('0' <= *p && *p <= '8'); p++) {
+                  tab[bs+i] = 1*allowed ;
+         for (; *p != '/' && *p != '\0' && *p != '~' && !('0' <= *p && *p <= '8'); p++) {
             if (*p == '-') {
                if (neg)
                   return "Can't have multiple negation signs" ;
@@ -252,7 +269,7 @@ const char *parseRule(const char *rule, int *tab) {
                int used = 0 ;
                for (int i=0; i<256; i++)
                   if (rulekeys[i][0] == dig && rulekeys[i][1] == *p) {
-                     tab[bs+i] = 1-neg ;
+                     tab[bs+i] = (1-neg)*allowed ;
                      used++ ;
                   }
                if (!used)
@@ -319,6 +336,7 @@ int evolveRow(int row1, int row2, int row3){
    int row1_s,row2_s,row3_s;
    int j,s = 0;
    int t = 0;
+   int theBit;
    if(params[P_SYMMETRY] == SYM_ODD) s = 1;
    if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
    if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
@@ -339,13 +357,19 @@ int evolveRow(int row1, int row2, int row3){
       row3 += ((row3 >> (width-1-t)) & 1) << (width);
    }
    row4 = evolveBit(row1_s, row2_s, row3_s);
-   for(j = 1; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
+   if (row4 == -1) return -1;
+   for(j = 1; j < width; j++){
+      theBit = evolveBit(row1, row2, row3, j - 1);
+      if (theBit == -1) return -1;
+      row4 += theBit << j;
+   }
    return row4;
 }
 
 int evolveRowHigh(int row1, int row2, int row3, int bits){
    int row4=0;
    int j,t = 0;
+   int theBit;
    if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
    if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
    if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
@@ -353,7 +377,11 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
       row2 += ((row2 >> (width-1-t)) & 1) << (width);
       row3 += ((row3 >> (width-1-t)) & 1) << (width);
    }
-   for(j = width-bits; j < width; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
+   for(j = width-bits; j < width; j++){
+      theBit = evolveBit(row1, row2, row3, j - 1);
+      if (theBit == -1) return -1;
+      row4 += theBit << j;
+   }
    return row4;
 }
 
@@ -361,6 +389,7 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    int row4;
    int row1_s,row2_s,row3_s;
    int j,s = 0;
+   int theBit;
    if(params[P_SYMMETRY] == SYM_ODD) s = 1;
    if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
    if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
@@ -374,7 +403,12 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
       row3_s = (row3 << 1);
    }
    row4 = evolveBit(row1_s, row2_s, row3_s);
-   for(j = 1; j < bits; j++)row4 += evolveBit(row1, row2, row3, j - 1) << j;
+   if (row4 == -1) return -1;
+   for(j = 1; j < bits; j++){
+      theBit = evolveBit(row1, row2, row3, j - 1);
+      if (theBit == -1) return -1;
+      row4 += theBit << j;
+   }
    return row4;
 }
 
@@ -973,7 +1007,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    /* Buffer output */
    patternBuf = (char*)realloc(patternBuf, ((2 * MAXWIDTH + 4) * sxsAllocRows + 300) * sizeof(char));
    
-   sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, rule);
+   sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, trueRule);
    
    int theBufRow = -1;
    while(theBufRow++ < nrows){
@@ -1580,6 +1614,7 @@ void usage(char *programName){
    printf("Available options:\n");
    printf("  -r bNN/sNN  searches for spaceships in the specified rule (default: b3/s23)\n");
    printf("              Non-totalistic rules can be entered using Hensel notation.\n");
+   printf("              Optionally, Use a tilde (~) to indicate forbidden conditions.\n");
    printf("\n");
 #ifndef QSIMPLE
    printf("  -p NN  searches for spaceships with period NN\n");
@@ -1741,6 +1776,10 @@ void checkParams(){
    
    /* Errors */
    ruleError = parseRule(rule, nttable);
+   int i = 0;
+   while (i < 256 && nttable[i] != -1) i++;
+   if (i < 256) forbiddenBirths = 1;
+   
    if (ruleError != 0){
       fprintf(stderr, "Error: failed to parse rule %s\n", rule);
       fprintf(stderr, "       %s\n", ruleError);
@@ -1756,7 +1795,7 @@ void checkParams(){
        exitFlag = 1;
    }
 #else
-   if(params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
+   if (params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
       fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
       exitFlag = 1;
    }
@@ -1789,19 +1828,19 @@ void checkParams(){
       fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
       exitFlag = 1;
    }
-   if(params[P_QBITS] <= 0){
+   if (params[P_QBITS] <= 0){
       fprintf(stderr, "Error: queue bits (-q) must be positive.\n");
       exitFlag = 1;
    }
-   if(params[P_BASEBITS] <= 0){
+   if (params[P_BASEBITS] <= 0){
       fprintf(stderr, "Error: base bits (-b) must be positive.\n");
       exitFlag = 1;
    }
-   if(params[P_BASEBITS] >= params[P_QBITS]){
+   if (params[P_BASEBITS] >= params[P_QBITS]){
       fprintf(stderr, "Error: base bits (-b) must be less than queue bits (-q).\n");
       exitFlag = 1;
    }
-   if(params[P_HASHBITS] < 0){
+   if (params[P_HASHBITS] < 0){
       fprintf(stderr, "Error: hash bits (-h) must be nonnegative.\n");
       exitFlag = 1;
    }
@@ -1811,14 +1850,17 @@ void checkParams(){
       fprintf(stderr, "Warning: searches for speeds exceeding c/2 may not work correctly.\n");
    }
 #ifdef NOCACHE
-   if(5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0 && params[P_CACHEMEM] == 0){
+   if (5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0 && params[P_CACHEMEM] == 0){
       fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you increase the cache memory (-c).\n");
    }
 #else
-   if(5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0 && params[P_CACHEMEM] > 0){
+   if (5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0 && params[P_CACHEMEM] > 0){
       fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you disable caching (-c 0).\n");
    }
 #endif
+   if (forbiddenBirths && (params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)){
+      fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along the gutter.\n");
+   }
    /* Reduce values to prevent integer overflow */
    if(params[P_QBITS] > 38 && !exitFlag){
       fprintf(stderr, "Warning: queue bits (-q) reduced to 38.\n");
@@ -2437,6 +2479,17 @@ void searchSetup(){
    for(int i = 0; i < params[P_NUMTHREADS]; i++)
       cache[i] = totalCache + (cachesize + 5) * i;
 #endif
+   
+   /* Generate proper rule string for printing patterns */
+   int i;
+   int j = 0;
+   int k = 1;
+   for (i = 0; i < 256 && rule[i] != '\0'; i++){
+      if (rule[i] == '~') k = 0;
+      else if (rule[i] == '/') k = 1;
+      if(k) trueRule[j++] = rule[i];
+   }
+   trueRule[j] = '\0';
    
    echoParams();
    
