@@ -466,13 +466,13 @@ void makeTables() {
 }
 
 uint16_t *bbuf ;
-int bbuf_left = 0 ;
+long long int bbuf_left = 0 ;
 
-/* reduce fragmentation by allocating chunks larger than needed and */
-/* parceling out the small pieces.                                  */
+/* reduce fragmentation by allocating chunks larger */
+/* than needed and parceling out the small pieces.  */
 uint16_t *bmalloc(int siz) {
    if (siz + (1<<width) > bbuf_left) {
-      bbuf_left = 1 << (2 * width) + (1<<width) ;
+      bbuf_left = (1LL << (2 * width)) + (1LL<<width) ;
       memusage += 2*bbuf_left ;
       if (params[P_MEMLIMIT] >= 0 && memusage > memlimit) {
          printf("Aborting due to excessive memory usage\n") ;
