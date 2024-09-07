@@ -53,7 +53,7 @@
 #define P_FULLPERIOD 19
 #define P_BOUNDARYSYM 20
 
-#define NUM_PARAMS 21
+#define NUM_PARAMS 21U
 
 #define SYM_UNDEF 0
 #define SYM_ASYM 1
@@ -87,10 +87,10 @@ enum Mode {
 
 /* the big data structures */
 #define qBits params[P_QBITS]
-#define QSIZE (1<<qBits)
+#define QSIZE (1LLU<<qBits)
 
 #define hashBits params[P_HASHBITS]
-#define HASHSIZE (1<<hashBits)
+#define HASHSIZE (1LLU<<hashBits)
 #define HASHMASK (HASHSIZE - 1)
 
 typedef uint32_t node;
@@ -447,8 +447,8 @@ void makeTables() {
    gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2) ;
    uint32_t i;
-   for(i = 0; i < 1 << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
-   for(i = 0; i < 1 << width; ++i) gcount[i] = 0 ;
+   for(i = 0; i < 1LLU << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
+   for(i = 0; i < 1LLU << width; ++i) gcount[i] = 0 ;
    gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
    if (params[P_REORDER] == 1)
       genStatCounts() ;
@@ -588,7 +588,7 @@ uint16_t *makeRow(int row1, int row2) {
    printf("\n") ;
    fflush(stdout) ;
  */
- 
+   
    return theRow ;
 }
 
@@ -1082,7 +1082,7 @@ static inline int qIsEmpty() {
 
 void qFull() {
     if (aborting != 2) {
-      printf("Exceeded %d node limit, search aborted\n", QSIZE);
+      printf("Exceeded %llu node limit, search aborted\n", QSIZE);
       fflush(stdout);
       aborting = 2;
    }
@@ -1169,14 +1169,14 @@ FILE * openDumpFile()
 void dumpState()
 {
    FILE * fp;
-   uint32_t i,j;
+   unsigned long long i,j;
    dumpFlag = DUMPFAILURE;
    if (!(fp = openDumpFile())) return;
    fprintf(fp,"%lu\n",FILEVERSION);
    fprintf(fp,"%s\n",rule);
    fprintf(fp,"%s\n",dumpRoot);
-   for (i = 0; i < NUM_PARAMS; ++i)
-      fprintf(fp,"%d\n",params[i]);
+   for (j = 0; j < NUM_PARAMS; ++j)
+      fprintf(fp,"%d\n",params[j]);
    fprintf(fp,"%d\n",width);
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
@@ -1188,7 +1188,7 @@ void dumpState()
    for (i = 0; i < QSIZE; ++i){
       if (deepRowIndices[i]){
          if (deepRowIndices[i] > 1){
-            for (j = 0; j < deepRows[deepRowIndices[i]][0] + 1 + 2; ++j){
+            for (j = 0; j < deepRows[deepRowIndices[i]][0] + 1LU + 2LU; ++j){
                fprintf(fp,"%u\n",deepRows[deepRowIndices[i]][j]);
             }
          }
@@ -1199,7 +1199,7 @@ void dumpState()
                if (deepRowIndices[i] == 1) ++j;
                ++i;
             }
-            fprintf(fp,"%u\n",j);
+            fprintf(fp,"%llu\n",j);
             if (i == QSIZE) break;
             --i;
          }
@@ -1309,7 +1309,8 @@ void doCompactPart1()
 void doCompactPart2()
 {
    node x,y;
-   uint32_t i, j, k;
+   uint32_t i, j;
+   int k;
    
    /*
       Make a pass forwards converting parent bits back to parent pointers.
@@ -1448,7 +1449,7 @@ static void deepen(){
    timeStamp();
    printf("Queue full");
    i = currentDepth();
-   if (i >= params[P_LASTDEEP]) deepeningAmount = MINDEEP;
+   if (i >= (unsigned long long)params[P_LASTDEEP]) deepeningAmount = MINDEEP;
    else deepeningAmount = params[P_LASTDEEP] + MINDEEP - i;   /* go at least MINDEEP deeper */
 
    params[P_LASTDEEP] = i + deepeningAmount;
@@ -1524,7 +1525,7 @@ static void deepen(){
 static void breadthFirst()
 {
    while (!aborting && !qIsEmpty()) {
-      if (qTail - qHead >= (1<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16 ||
+      if (qTail - qHead >= (1LLU<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16 ||
           qTail >= QSIZE - (deepeningAmount << 2)) deepen();
       else process(dequeue());
    }
@@ -1535,8 +1536,8 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
    #pragma omp critical(findDeepIndex)
    {
       theDeepIndex = 2;
-      while(deepRows[theDeepIndex] && theDeepIndex < 1 << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
-      if(theDeepIndex == 1 << (params[P_DEPTHLIMIT] + 1)){
+      while(deepRows[theDeepIndex] && theDeepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
+      if(theDeepIndex == 1LLU << (params[P_DEPTHLIMIT] + 1)){
          fprintf(stderr,"Error: no available extension indices.\n");
          aborting = 1;
       }
@@ -1676,9 +1677,10 @@ void echoParams(){
 /* ========================= */
 
 static void preview(/*int allPhases*/) {
-   node i,j,k;
+   node i,j;
    row *pRows;
-   int ph;
+   // int ph;  /* used for allPhases option */
+   // node k;  /* used for allPhases option */
 
    for (i = qHead; (i<qTail) && EMPTY(i); i++);
    for (j = qTail-1; (j>i) && EMPTY(j); j--);
@@ -1787,6 +1789,22 @@ void checkParams(){
       fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
       exitFlag = 1;
    }
+   if(params[P_QBITS] <= 0){
+      fprintf(stderr, "Error: queue bits (-q) must be positive.\n");
+      exitFlag = 1;
+   }
+   if(params[P_BASEBITS] <= 0){
+      fprintf(stderr, "Error: base bits (-b) must be positive.\n");
+      exitFlag = 1;
+   }
+   if(params[P_BASEBITS] >= params[P_QBITS]){
+      fprintf(stderr, "Error: base bits (-b) must be less than queue bits (-q).\n");
+      exitFlag = 1;
+   }
+   if(params[P_HASHBITS] < 0){
+      fprintf(stderr, "Error: hash bits (-h) must be nonnegative.\n");
+      exitFlag = 1;
+   }
    
    /* Warnings */
    if (2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
@@ -1801,6 +1819,19 @@ void checkParams(){
       fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you disable caching (-c 0).\n");
    }
 #endif
+   /* Reduce values to prevent integer overflow */
+   if(params[P_QBITS] > 38 && !exitFlag){
+      fprintf(stderr, "Warning: queue bits (-q) reduced to 38.\n");
+      params[P_QBITS] = 38;      /* corresponds to a queue size of 550GB */
+      if(params[P_BASEBITS] > params[P_QBITS]){
+         fprintf(stderr, "Warning: base bits (-q) reduced to 36.\n");
+         params[P_BASEBITS] = 36;      /* corresponds to a queue size of 550GB */
+      }
+   }
+   if(params[P_HASHBITS] > 36 && !exitFlag){
+      fprintf(stderr, "Warning: hash bits (-h) reduced to 38.\n");
+      params[P_HASHBITS] = 36;   /* corresponds to a hash table size of 550GB */
+   }
    
    /* exit if there are errors */
    if(exitFlag){
@@ -1835,7 +1866,7 @@ unsigned int loadUInt(FILE *fp){
 
 void loadParams() {
    FILE * fp;
-   int i;
+   unsigned int i;
    
    /* reset flag to prevent modification of params[P_LASTDEEP] at start of search */
    newLastDeep = 0;
@@ -1899,7 +1930,7 @@ void loadState(){
       if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
    }
    
-   /* Load up BFS queue and complete compaction */
+   /* Load up BFS queue */
    qHead  = loadUInt(fp);
    qEnd   = loadUInt(fp);
    qStart = QSIZE - qEnd;
@@ -1921,7 +1952,8 @@ void loadState(){
    exit(0);
    */
    
-   deepRows = (row**)calloc(1 << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
+   /* Load extension rows for each queue node */
+   deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
    deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
    
    uint32_t theDeepIndex = 2;
@@ -1948,6 +1980,7 @@ void loadState(){
    
    fclose(fp);
    
+   /* complete compaction */
    doCompactPart2();
    
    /* Let the user know that we got this far (suppress if splitting) */
@@ -2028,6 +2061,10 @@ void setDefaultParams(){
 /* Note: currently reserving -v for potentially editing an array of extra variables */
 void parseOptions(int argc, char *argv[]){
    char *programName = argv[0];
+   if(argc <= 1){
+      usage(programName);
+      exit(0);
+   }
    while(--argc > 0){               /* read input parameters */
       if ((*++argv)[0] == '-'){
          switch ((*argv)[1]){
@@ -2220,7 +2257,7 @@ void searchSetup(){
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
       
-      deepRows = (row**)calloc(1 << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
+      deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
       deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
       
       resetQ();
@@ -2290,9 +2327,9 @@ void searchSetup(){
       }
       
       /* nodes per file is rounded up */
-      int nodesPerFile = (totalNodes - 1) / splitNum + 1;
+      unsigned long nodesPerFile = (totalNodes - 1) / splitNum + 1;
       
-      printf("Splitting search state with %d queue nodes per file\n",nodesPerFile);
+      printf("Splitting search state with %lu queue nodes per file\n",nodesPerFile);
       
       /* save qHead and qTail, as creating the pieces will change their values */
       node fixedQHead = qHead;
@@ -2303,7 +2340,7 @@ void searchSetup(){
       free(rows);
       free(hash);
       
-      for (deepIndex = 0; deepIndex < 1 << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
+      for (deepIndex = 0; deepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
          if (deepRows[deepIndex]) free(deepRows[deepIndex]);
          deepRows[deepIndex] = 0;
       }
@@ -2363,7 +2400,7 @@ void searchSetup(){
          }
          
          /* free memory allocated in loadState() */
-         for (deepIndex = 0; deepIndex < 1 << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
+         for (deepIndex = 0; deepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
             if (deepRows[deepIndex]) free(deepRows[deepIndex]);
             deepRows[deepIndex] = 0;
          }
@@ -2386,7 +2423,7 @@ void searchSetup(){
    /* Allocate lookahead cache */
 #ifndef NOCACHE
    cachesize = 32768 ;
-   while (cachesize * sizeof(cacheentry) < 550000 * params[P_CACHEMEM])
+   while (cachesize * sizeof(cacheentry) < 550000 * (unsigned long long)params[P_CACHEMEM])
       cachesize <<= 1 ;
    memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
    if(params[P_MEMLIMIT] >= 0 && memusage > memlimit){
