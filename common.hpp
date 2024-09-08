@@ -64,7 +64,6 @@
 const char *rule = "B3/S23";     /* Default rule set to B3/S23 (Life) */
 char loadRule[256];              /* Used for loading rule from file */
 char trueRule[256];              /* Used in case of forbidden conditions */
-int forbiddenBirths = 0;         /* Used to indicate if there are forbidden birth conditions */
 
 char *initRows;
 
@@ -301,7 +300,7 @@ const char *parseRule(const char *rule, int *tab) {
       }
       if (bs == 0) {
          if (*p++ != '/')
-            return "Missing expected slash between b and s" ;
+            return "Missing expected slash between B and S" ;
       } else {
          if (*p++ != 0)
             return "Extra unparsed junk at end of rule string" ;
@@ -1791,22 +1790,164 @@ int previewFlag = 0;
 int initRowsFlag = 0;
 int newLastDeep = 0;
 
+/* Returns the value of nttable (ignoring -1) for  */
+/* the given conditions or 2 if the conditions do  */
+/* not all have the same value.  Returns -1 if all */
+/* the given conditions have value -1 in nttable.  */
+int checkConditions(const char *p) {
+   int tempTab[256];
+   int bs = 0;
+   int i;
+   if (*p == 's' || *p == 'S') bs = 256;
+   p++;
+   int val = -1;
+   while (*p != '\0'){
+      char dig = *p++ ;
+      int negCount = 0 ;
+      if (*p == '\0' || ('0' <= *p && *p <= '8')){
+         for (i = 0; i < 256; i++){
+            if (rulekeys[i][0] == dig && nttable[bs+i] != -1){
+               if (val == -1)
+                  val = nttable[bs+i];
+               if (val != nttable[bs+i])
+                  return 2;
+            }
+         }
+      }
+      else if (*p == '-'){
+         p++;
+         for(i = 0; i < 256; i++)
+            tempTab[256] = 0;
+         for (; *p != '\0' && !('0' <= *p && *p <= '8'); p++){
+            for (i = 1; i < 256; i++)
+               if (rulekeys[i][0] == dig && *p != rulekeys[i][1])
+                  tempTab[i]++;
+            negCount++;
+         }
+         for(i = 0; i < 256; i++){
+            if (tempTab[i] == negCount && nttable[bs+i] != -1){
+               if (val == -1)
+                  val = nttable[bs+i];
+               if (val != nttable[bs+i])
+                  return 2;
+            }
+         }
+      }
+      else {
+         for (; *p != '\0' && !('0' <= *p && *p <= '8'); p++){
+            for (i = 0; i < 256; i++){
+               if (rulekeys[i][0] == dig && rulekeys[i][1] == *p && nttable[bs+i] != -1){
+                  if (val == -1)
+                     val = nttable[bs+i];
+                  if (val != nttable[bs+i])
+                     return 2;
+               }
+            }
+         }
+      }
+   }
+   return val;
+}
+
+int checkRule() {
+   int exitFlag = 0;
+   
+   /* Errors: no meaningful results possible */
+   if (checkConditions("B0") == 1){
+      fprintf(stderr, "Error: rules with B0 are not supported.\n");
+      exitFlag = 1;
+   }
+   /* Included below are conditions that prevent spaceships     */
+   /* from existing.  For proofs of these conditions, see here: */
+   /* https://conwaylife.com/forums/viewtopic.php?f=11&t=5471   */
+   /* https://ics.uci.edu/~eppstein/ca/glider.c                 */
+   /*                                                           */
+   /*       x <= 0: none of the conditions are satisfied in     */
+   /*               the minimum rule                            */
+   /* (x+1)%2 == 0: all of the conditions are satisfied in      */
+   /*               the maximum rule                            */
+   if (checkConditions("B0") == -1){
+      fprintf(stderr, "Error: any pattern that is not infinite in both dimensions must contain\n       the B0 neighborhood.\n");
+      exitFlag = 1;
+   }
+   if (checkConditions("B1c") == -1){
+      fprintf(stderr, "Error: spaceships and waves must contain the B1c neighborhood.\n");
+      exitFlag = 1;
+   }
+   if (checkConditions("B1c") == 1 && checkConditions("B0") == 0){
+      fprintf(stderr, "Error: patterns in rules with B1c and without B0 expand in all directions.\n");
+      exitFlag = 1;
+   }
+   else if (checkConditions("B1e2a") == 1 && checkConditions("B0") == 0) {
+      fprintf(stderr, "Error: patterns in rules with B1e2a and without B0 expand in all directions.\n");
+      exitFlag = 1;
+   }
+   /* The following checks are done only for spaceship searches */
+   if ( (params[P_BOUNDARYSYM] == SYM_UNDEF || params[P_SYMMETRY] == SYM_ASYM) ){ 
+      if (checkConditions("B012ac3i") <= 0){
+         fprintf(stderr, "Error: patterns in rules without any of B012ac3i cannot leave\n       their initial bounding box.\n");
+         exitFlag = 1;
+      }
+      if (checkConditions("B012ae3a") <= 0) {
+         fprintf(stderr, "Error: patterns in rules without any of B012ae3a cannot leave\n       their initial bounding diamond.\n");
+         exitFlag = 1;
+      }
+      if (checkConditions("B01245") <=0 && checkConditions("S012345") <= 0) {
+         fprintf(stderr, "Error: patterns in rules without any of B01245/S012345 cannot move a distance\n       of more than one cell outside their initial bounding diamond.\n");
+         exitFlag = 1;
+      }
+      if ( checkConditions("B01e2a") <= 0 && 2 * params[P_OFFSET] > params[P_PERIOD]){
+         fprintf(stderr, "Error: orthogonal spaceship speed limit in rules without any of B01e2a is c/2.\n");
+         exitFlag = 1;
+      }
+   }
+   
+   /* Warnings: no spaceships exist, but maybe we can get some interesting wickstretchers */
+   if ( (params[P_BOUNDARYSYM] == SYM_UNDEF || params[P_SYMMETRY] == SYM_ASYM) ){
+      if (checkConditions("B0") == 0 && (checkConditions("B23")+1)%2 == 0 && (checkConditions("S0")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B23/S0 and without B0,\n         because the trailing edge of a pattern cannot die.\n");
+      }
+      if ((checkConditions("S012acek3aijn4a")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S012acek3aijn4a and\n         without B0, because patterns cannot shrink.\n");
+      }
+      if ((checkConditions("S1234-wz5-aqr6ce")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S1234-wz5-aqr6ce and\n         without B0, because connected patterns cannot shrink.\n");
+      }
+      if ((checkConditions("B34")+1)%2 == 0 && (checkConditions("S12345")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B34/S12345 and without B0,\n         because connected patterns cannot shrink.\n");
+      }
+      if ((checkConditions("B345")+1)%2 == 0 && (checkConditions("S1234")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B345/S1234 and without B0,\n         because connected patterns cannot shrink.\n");
+      }
+      if (checkConditions("B012") <= 0 && (checkConditions("S234567")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S234567 and none of B012,\n         because patterns cannot escape their bounding diamond without an\n         immortal triangle.\n");
+      }
+   }
+   
+   return exitFlag;
+}
+
 void checkParams(){
    int exitFlag = 0;
    const char *ruleError;
    
    /* Errors */
    ruleError = parseRule(rule, nttable);
-   
    int i = 0;
-   while (i < 256 && nttable[i] != -1) i++;
-   if (i < 256) forbiddenBirths = 1;
+   int forbiddenBirths = 0;
+   while (i < 256 && nttable[i] != -1)
+      i++;
+   if (i < 256)
+      forbiddenBirths = 1;
    
    if (ruleError != 0){
       fprintf(stderr, "Error: failed to parse rule %s\n", rule);
       fprintf(stderr, "       %s\n", ruleError);
       exitFlag = 1;
    }
+   else
+      exitFlag = checkRule();
+   
 #ifdef QSIMPLE
    if (gcd(PERIOD,OFFSET) > 1){
       fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
@@ -1883,13 +2024,18 @@ void checkParams(){
    if (forbiddenBirths && (params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)){
       fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along the gutter.\n");
    }
+   if (params[P_SYMMETRY] == SYM_ASYM && params[P_BOUNDARYSYM] != SYM_UNDEF){
+      fprintf(stderr, "Warning: the wave symmetry settings are equivalent to a spaceship search.\n");
+      params[P_SYMMETRY] = params[P_BOUNDARYSYM];
+      params[P_BOUNDARYSYM] = SYM_UNDEF;
+   }
    /* Reduce values to prevent integer overflow */
    if(params[P_QBITS] > 38 && !exitFlag){
       fprintf(stderr, "Warning: queue bits (-q) reduced to 38.\n");
       params[P_QBITS] = 38;      /* corresponds to a queue size of 550GB */
       if(params[P_BASEBITS] > params[P_QBITS]){
          fprintf(stderr, "Warning: base bits (-q) reduced to 36.\n");
-         params[P_BASEBITS] = 36;      /* corresponds to a queue size of 550GB */
+         params[P_BASEBITS] = 36;
       }
    }
    if(params[P_HASHBITS] > 36 && !exitFlag){
