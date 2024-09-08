@@ -22,7 +22,7 @@
 
 #define BANNER XSTR(WHICHPROGRAM)" v2.3 by Matthias Merzenich, 19 March 2023"
 
-#define FILEVERSION ((unsigned long) 2023031901)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2024090801)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define CHUNK_SIZE 64
@@ -81,10 +81,12 @@ int numFound = 0;       /* number of spaceships found so far */
 int longest = 0;        /* length of current longest partial result */
 
 enum Mode {
-   asymmetric,          /* basic orthogonal pattern */
+   asymmetric = 1,      /* basic orthogonal pattern */
    odd, even,           /* orthogonal with bilateral symmetry */
    gutter,              /* orthogonal bilateral symmetry with empty column in middle */
 } mode;
+
+int gutterSkew = 0;     /* number of cells to skew halves in gutter symmetric search */
 
 /* the big data structures */
 #define qBits params[P_QBITS]
@@ -357,28 +359,38 @@ int evolveRow(int row1, int row2, int row3){
    int j,s = 0;
    int t = 0;
    int theBit;
-   if(params[P_SYMMETRY] == SYM_ODD) s = 1;
-   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
-   if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
-   if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
-   if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
+   if (params[P_BOUNDARYSYM] == SYM_GUTTER && !gutterSkew){ /* Need to check the gutter for forbidden births */
+      theBit = (row1 >> (width-1)) + ((row2 >> (width-1)) << 1) + ((row3 >> (width-1)) << 2);
+      if (evolveBit(theBit, 0, theBit))
+         return -1;
+   }
+   if (params[P_SYMMETRY] == SYM_GUTTER && !gutterSkew){    /* Need to check the gutter for forbidden births */
+      theBit = (row1 & 1) + ((row2 & 1) << 1) + ((row3 & 1) << 2);
+      if (evolveBit(theBit, 0, theBit))
+         return -1;
+   }
+   if (params[P_SYMMETRY] == SYM_ODD) s = 1;
+   if (params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
+   if (params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
+   if (params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
+   if (params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
       row1_s = (row1 << 1) + ((row1 >> s) & 1);
       row2_s = (row2 << 1) + ((row2 >> s) & 1);
       row3_s = (row3 << 1) + ((row3 >> s) & 1);
    }
-   else{
+   else {
       row1_s = (row1 << 1);
       row2_s = (row2 << 1);
       row3_s = (row3 << 1);
    }
-   if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
+   if (params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
       row1 += ((row1 >> (width-1-t)) & 1) << (width);
       row2 += ((row2 >> (width-1-t)) & 1) << (width);
       row3 += ((row3 >> (width-1-t)) & 1) << (width);
    }
    row4 = evolveBit(row1_s, row2_s, row3_s);
    if (row4 == -1) return -1;
-   for(j = 1; j < width; j++){
+   for (j = 1; j < width; j++){
       theBit = evolveBit(row1, row2, row3, j - 1);
       if (theBit == -1) return -1;
       row4 += theBit << j;
@@ -390,6 +402,11 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
    int row4=0;
    int j,t = 0;
    int theBit;
+   if (params[P_BOUNDARYSYM] == SYM_GUTTER && !gutterSkew){ /* Need to check the gutter for forbidden births */
+      theBit = (row1 >> (width-1)) + ((row2 >> (width-1)) << 1) + ((row3 >> (width-1)) << 2);
+      if (evolveBit(theBit, 0, theBit))
+         return -1;
+   }
    if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
    if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
    if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
@@ -399,7 +416,8 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
    }
    for(j = width-bits; j < width; j++){
       theBit = evolveBit(row1, row2, row3, j - 1);
-      if (theBit == -1) return -1;
+      if (theBit == -1)
+         return -1;
       row4 += theBit << j;
    }
    return row4;
@@ -410,6 +428,11 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    int row1_s,row2_s,row3_s;
    int j,s = 0;
    int theBit;
+   if (params[P_SYMMETRY] == SYM_GUTTER && !gutterSkew){ /* Need to check the gutter for forbidden births */
+      theBit = (row1 & 1) + ((row2 & 1) << 1) + ((row3 & 1) << 2);
+      if (evolveBit(theBit, 0, theBit))
+         return -1;
+   }
    if(params[P_SYMMETRY] == SYM_ODD) s = 1;
    if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
    if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
@@ -829,7 +852,6 @@ unsigned long * oldssrows;
 int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printExpected){
    node c;
    int nrows = 0;
-   int skewAmount = 0;
    int swidth;
    int sxsNeeded;
    int p, i, j, margin;
@@ -951,7 +973,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
             ssrows[i] = r >> (32 - (MAXWIDTH + 1));
             for (j = 0; j < MAXWIDTH; j++)
                if (r & (1<<j))
-                  srows[i+skewAmount] |= 1 << (MAXWIDTH - 1 - j);
+                  srows[i+gutterSkew] |= 1 << (MAXWIDTH - 1 - j);
             break;
 
          default:
@@ -1867,11 +1889,17 @@ int checkRule() {
    /* (x+1)%2 == 0: all of the conditions are satisfied in      */
    /*               the maximum rule                            */
    if (checkConditions("B0") == -1){
-      fprintf(stderr, "Error: any pattern that is not infinite in both dimensions must contain\n       the B0 neighborhood.\n");
+      fprintf(stderr, "Error: any pattern that is not infinite in both dimensions must contain\n"
+                      "       the B0 neighborhood.\n");
       exitFlag = 1;
    }
    if (checkConditions("B1c") == -1){
       fprintf(stderr, "Error: spaceships and waves must contain the B1c neighborhood.\n");
+      exitFlag = 1;
+   }
+   else if (checkConditions("B1e2a") == -1) {
+      fprintf(stderr, "Error: spaceships and waves must contain at least one of the B1e or B2a\n"
+                      "       neighborhoods.\n");
       exitFlag = 1;
    }
    if (checkConditions("B1c") == 1 && checkConditions("B0") == 0){
@@ -1885,15 +1913,18 @@ int checkRule() {
    /* The following checks are done only for spaceship searches */
    if ( (params[P_BOUNDARYSYM] == SYM_UNDEF || params[P_SYMMETRY] == SYM_ASYM) ){ 
       if (checkConditions("B012ac3i") <= 0){
-         fprintf(stderr, "Error: patterns in rules without any of B012ac3i cannot leave\n       their initial bounding box.\n");
+         fprintf(stderr, "Error: patterns in rules without any of B012ac3i cannot leave\n"
+                         "         their initial bounding box.\n");
          exitFlag = 1;
       }
       if (checkConditions("B012ae3a") <= 0) {
-         fprintf(stderr, "Error: patterns in rules without any of B012ae3a cannot leave\n       their initial bounding diamond.\n");
+         fprintf(stderr, "Error: patterns in rules without any of B012ae3a cannot leave\n"
+                         "       their initial bounding diamond.\n");
          exitFlag = 1;
       }
       if (checkConditions("B01245") <=0 && checkConditions("S012345") <= 0) {
-         fprintf(stderr, "Error: patterns in rules without any of B01245/S012345 cannot move a distance\n       of more than one cell outside their initial bounding diamond.\n");
+         fprintf(stderr, "Error: patterns in rules without any of B01245/S012345 cannot move a distance\n"
+                         "       of more than one cell outside their initial bounding diamond.\n");
          exitFlag = 1;
       }
       if ( checkConditions("B01e2a") <= 0 && 2 * params[P_OFFSET] > params[P_PERIOD]){
@@ -1905,24 +1936,60 @@ int checkRule() {
    /* Warnings: no spaceships exist, but maybe we can get some interesting wickstretchers */
    if ( (params[P_BOUNDARYSYM] == SYM_UNDEF || params[P_SYMMETRY] == SYM_ASYM) ){
       if (checkConditions("B0") == 0 && (checkConditions("B23")+1)%2 == 0 && (checkConditions("S0")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of B23/S0 and without B0,\n         because the trailing edge of a pattern cannot die.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B23/S0 and without B0,\n"
+                         "         because the trailing edge of a pattern cannot die.\n");
       }
       if ((checkConditions("S012acek3aijn4a")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of S012acek3aijn4a and\n         without B0, because patterns cannot shrink.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S012acek3aijn4a and\n"
+                         "         without B0, because patterns cannot shrink.\n");
       }
       if ((checkConditions("S1234-wz5-aqr6ce")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of S1234-wz5-aqr6ce and\n         without B0, because connected patterns cannot shrink.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S1234-wz5-aqr6ce and\n"
+                         "         without B0, because connected patterns cannot shrink.\n");
       }
       if ((checkConditions("B34")+1)%2 == 0 && (checkConditions("S12345")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of B34/S12345 and without B0,\n         because connected patterns cannot shrink.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B34/S12345 and without B0,\n"
+                         "         because connected patterns cannot shrink.\n");
       }
       if ((checkConditions("B345")+1)%2 == 0 && (checkConditions("S1234")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of B345/S1234 and without B0,\n         because connected patterns cannot shrink.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of B345/S1234 and without B0,\n"
+                         "         because connected patterns cannot shrink.\n");
       }
       if (checkConditions("B012") <= 0 && (checkConditions("S234567")+1)%2 == 0){
-         fprintf(stderr, "Warning: no spaceships exist in rules with all of S234567 and none of B012,\n         because patterns cannot escape their bounding diamond without an\n         immortal triangle.\n");
+         fprintf(stderr, "Warning: no spaceships exist in rules with all of S234567 and none of B012,\n"
+                         "         because patterns cannot escape their bounding diamond without an\n"
+                         "         immortal triangle.\n");
       }
    }
+   
+   return exitFlag;
+}
+
+int checkGutter(){
+   int exitFlag = 0;
+   int i = 0;
+   int forbiddenBirths = 0;
+   while (i < 256 && nttable[i] != -1)
+      i++;
+   if (i < 256)
+      forbiddenBirths = 1;
+   
+   if(checkConditions("B2ce4ci6i") <= 0)
+      gutterSkew = 0;
+   else if(checkConditions("B1c2kn3ny4yz5r6i") <= 0)
+      gutterSkew = 1;
+   else if(checkConditions("B12aikn3cqr4cnyz5er6i") <= 0)
+      gutterSkew = 2;
+   else {
+      fprintf(stderr, "Error: gutters do not work with the given birth conditions.\n"
+                      "       The forbidden birth conditions for different gutter types are\n"
+                      "         Skew 0: B2ce4ci6i\n"
+                      "         Skew 1: B1c2kn3ny4yz5r6i\n"
+                      "         Skew 2: B12aikn3cqr4cnyz5er6i\n");
+      exitFlag = 1;
+   }
+   if (gutterSkew && forbiddenBirths)
+      fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along a skew gutter.\n");
    
    return exitFlag;
 }
@@ -1933,12 +2000,6 @@ void checkParams(){
    
    /* Errors */
    ruleError = parseRule(rule, nttable);
-   int i = 0;
-   int forbiddenBirths = 0;
-   while (i < 256 && nttable[i] != -1)
-      i++;
-   if (i < 256)
-      forbiddenBirths = 1;
    
    if (ruleError != 0){
       fprintf(stderr, "Error: failed to parse rule %s\n", rule);
@@ -1946,7 +2007,10 @@ void checkParams(){
       exitFlag = 1;
    }
    else
-      exitFlag = checkRule();
+      exitFlag |= checkRule();
+   
+   if(params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)
+      exitFlag |= checkGutter();
    
 #ifdef QSIMPLE
    if (gcd(PERIOD,OFFSET) > 1){
@@ -1988,7 +2052,8 @@ void checkParams(){
       exitFlag = 1;
    }
    if (initRowsFlag && loadDumpFlag){
-      fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n       saved state.\n");
+      fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n"
+                      "       saved state.\n");
       exitFlag = 1;
    }
    if (params[P_QBITS] <= 0){
@@ -2014,20 +2079,20 @@ void checkParams(){
    }
 #ifdef NOCACHE
    if (5 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0 && params[P_CACHEMEM] == 0){
-      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n         It is recommended that you increase the cache memory (-c).\n");
+      fprintf(stderr, "Warning: Searches for speeds exceeding c/5 may be slower without caching.\n"
+                      "         It is recommended that you increase the cache memory (-c).\n");
    }
 #else
    if (5 * params[P_OFFSET] <= params[P_PERIOD] && params[P_OFFSET] > 0 && params[P_CACHEMEM] > 0){
-      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n         It is recommended that you disable caching (-c 0).\n");
+      fprintf(stderr, "Warning: Searches for speeds at or below c/5 may be slower with caching.\n"
+                      "         It is recommended that you disable caching (-c 0).\n");
    }
 #endif
-   if (forbiddenBirths && (params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)){
-      fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along the gutter.\n");
-   }
    if (params[P_SYMMETRY] == SYM_ASYM && params[P_BOUNDARYSYM] != SYM_UNDEF){
       fprintf(stderr, "Warning: the wave symmetry settings are equivalent to a spaceship search.\n");
       params[P_SYMMETRY] = params[P_BOUNDARYSYM];
       params[P_BOUNDARYSYM] = SYM_UNDEF;
+      mode = (Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
    if(params[P_QBITS] > 38 && !exitFlag){
