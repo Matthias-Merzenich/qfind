@@ -225,6 +225,7 @@ const char *rulekeys[] = {
  */
 const char *parseRule(const char *rule, int *tab) {
    const char *p = rule ;
+   int tempTab[256];    /* needed to keep track of values when setting forbidden conditions */
    for (int i=0; i<512; i++)
       tab[i] = 0 ;
    for (int bs=0; bs<512; bs += 256) {
@@ -256,27 +257,47 @@ const char *parseRule(const char *rule, int *tab) {
             return "Unexpected character in rule" ;
          char dig = *p++ ;
          int neg = 0 ;
-         if (*p == '/' || *p == '\0' || *p == '-' || *p == '~' || ('0' <= *p && *p <= '8'))
+         if (*p == '/' || *p == '\0' || (*p == '-' && allowed == 1) || *p == '~' || ('0' <= *p && *p <= '8'))
             for (int i=0; i<256; i++)
                if (rulekeys[i][0] == dig)
                   tab[bs+i] = 1*allowed ;
+         int forbiddenCount = 0;
+         if (*p == '-'){
+            neg = 1;
+            for (int i=0; i<256; i++)
+               tempTab[i] = 0 ;
+            p++;
+         }
          for (; *p != '/' && *p != '\0' && *p != '~' && !('0' <= *p && *p <= '8'); p++) {
-            if (*p == '-') {
-               if (neg)
-                  return "Can't have multiple negation signs" ;
-               neg = 1 ;
-            } else if ('a' <= *p && *p <= 'z') {
+            if (*p == '-')
+               return "Improperly placed negation sign" ;
+            if ('a' <= *p && *p <= 'z') {
                int used = 0 ;
-               for (int i=0; i<256; i++)
-                  if (rulekeys[i][0] == dig && rulekeys[i][1] == *p) {
-                     tab[bs+i] = (1-neg)*allowed ;
-                     used++ ;
+               for (int i=0; i<256; i++){
+                  if (rulekeys[i][0] == dig){
+                     if (rulekeys[i][1] == *p){
+                        if (allowed == 1)
+                           tab[bs+i] = (1-neg) ;
+                        else if (!neg)
+                           tab[bs+i] = -1 ;
+                        used++ ;
+                     }
+                     else if (neg && allowed == -1)
+                        tempTab[i]++;
                   }
+               }
+               if (neg && allowed == -1)
+                  forbiddenCount++;
                if (!used)
                   return "Unexpected character in rule" ;
-            } else
+            }
+            else
                return "Unexpected character in rule" ;
          }
+         if (neg && allowed == -1)
+            for (int i=0; i<256; i++)
+               if (tempTab[i] == forbiddenCount)
+                  tab[bs+i] = -1 ;
       }
       if (bs == 0) {
          if (*p++ != '/')
@@ -1776,6 +1797,7 @@ void checkParams(){
    
    /* Errors */
    ruleError = parseRule(rule, nttable);
+   
    int i = 0;
    while (i < 256 && nttable[i] != -1) i++;
    if (i < 256) forbiddenBirths = 1;
