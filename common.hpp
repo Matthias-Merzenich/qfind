@@ -1677,7 +1677,7 @@ void printHelp(const char *programName){
    printf("  -g,  --min-extension <number> minimum length of saved extensions\n");
    printf("  -n,  --first-depth <number>   depth reached during first deepening step\n");
    printf("  -e,  --extend <filename>      file containing the initial rows for a search\n"
-          "                                Use the Golly script find-rows.lua to easily\n"
+          "                                Use the Golly script get-rows.lua to easily\n"
           "                                generate the initial rows file.\n");
    printf("\n");
    printf("Memory options:\n");
@@ -1710,8 +1710,8 @@ void printHelp(const char *programName){
           "                                              partial result at end of search\n");
    
    printf("Wave options:\n");
-   printf("  -o,  --boundary-sym <(disabled|asymmetric|odd|even|gutter)>\n"
-          "                                boundary symmetry type for wave searches\n");
+   printf("  -o,  --boundary-sym <(disabled|odd|even|gutter)>  boundary symmetry type for\n"
+          "                                                    wave searches\n");
    printf("\n");
    printf("Documentation options:\n");
    printf("  --help                        print usage instructions and exit\n");
