@@ -2038,7 +2038,7 @@ void checkParams(){
    if (params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0)
       printError("translation cannot exceed period.");
    if (params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0)
-      printError("photons are not supported.");
+      printError("photon searches are not supported.");
 #endif
    if (params[P_PERIOD] == 0)
       printError("you must specify a velocity (-v).");
@@ -2333,37 +2333,16 @@ struct option {
    int val;
 };
 
-/* Nonstandard getopt:
+/* Nonstandard getopt_long():
 ** This is a simple implementation of a getopt-like function.
-** It's missing several features that ordinary getopt() has.
+** It's missing several features that ordinary getopt_long() has,
+** but it has mostly the same input and output.
 **
-**   Input: int argc and char *argv[]:
-**             from main(int argc, char *argv[])
-**          const char *shortOpts:
-**             a string of valid option characters.  If a character is
-**             followed by a single colon it has a required argument.
-**             If it is followed by two colons it has an optional argument.
-**          struct option *longOpts:
-**             a list of long option names, their associated return values,
-**             and a member indicating it it has an argument and whether
-**             that argument is optional or not.
-**          char **optName and char **optArg:
+** Differences from getopt_long():
+**   I/O:   char **optName and char **optArg:
 **             passed by reference to save pointers to option names and
-**             arguments.
-** Updated: *optName and *optArg are passed by reference.  *optArg
-**          will point to the element of argv[] corresponding to the
-**          argument of the specified option or be NULL if there is
-**          no such argument.  i is stored statically, so repeated
-**          calls to my_getopt() will traverse argv[].
-** Returns: returns the option character (as (int)) for the specified
-**          option if it is a short option ("-<character>") included
-**          in the string *shortOpts or if it is a long option
-**          ("--<string>") included in *longOpts.
-**          If a required argument is not present, either ':' or '?'
-**          will be returned, depending on whether ':' is the first
-**          character of *shortOpts or not.
-**          Returns '?' if the option is in neither *shortOpts nor
-**          *longOpts.
+**             arguments.  *optName and *optArg will point to elements
+**             of argv[].  If no argument is provided, *optArg will be 0.
 */
 int my_getopt( int argc,
                char *argv[],
@@ -2434,7 +2413,22 @@ const char *parseVelocity(char *velString, int *per, int *off){
    int xoff = 0;
    *per = 1;
    *off = 1;
-   if (!strcmp(velString,"c") || sscanf(velString, "c/%d", per) == 1)
+   char b = 0;
+   char c = 0;
+   if (!strcmp(velString,"c"))
+      return 0;
+   else if (sscanf(velString, "c/%d%c%c", per, &b, &c) >= 2){
+      printf("b: %c\n(int)b: %d\n",b,(int)b);
+      if (b == 'd' && !c)
+         return "diagonal spaceship searches are not supported.";
+      return "illegal characters after velocity";
+   }
+   else if (sscanf(velString, "%dc/%d%c%c", off, per, &b, &c) >= 3){
+      if (b == 'd' && !c)
+         return "diagonal spaceship searches are not supported.";
+      return "illegal characters after velocity";
+   }
+   else if (sscanf(velString, "c/%d", per) == 1)
       return 0;
    else if (sscanf(velString, "%dc/%d", off, per) == 2){
       if (*off == 0)
@@ -2444,7 +2438,9 @@ const char *parseVelocity(char *velString, int *per, int *off){
       else
          return 0;
    }
-   else if (sscanf(velString, "(%d,%d)c/%d", off, &xoff, per) == 3){
+   else if (sscanf(velString, "(%d,%d)c/%d%c", off, &xoff, per, &c) >= 3){
+      if (c)
+         return "illegal characters after velocity";
       if (xoff != 0) {
          if (*off == 0){
             *off = xoff;
@@ -2463,7 +2459,6 @@ const char *parseVelocity(char *velString, int *per, int *off){
       
       return 0;
    }
-   
    return "Unable to read offset and period.";
 }
 
