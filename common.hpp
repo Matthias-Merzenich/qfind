@@ -75,13 +75,18 @@ int phase;
 
 int period;
 int offset;
-
-int aborting;
 int numFound = 0;       /* number of spaceships found so far */
 int longest = 0;        /* length of current longest partial result */
 
+int aborting = 0;       /* A flag to indicate that we are stopping the search.
+                        ** valid aborting values:
+                        **   0: not aborting
+                        **   1: fatal error
+                        **   2: queue size limit reached
+                        **   3: desired number of ships found
+                        */
 enum Mode {
-   asymmetric = 1,      /* basic orthogonal pattern */
+   asymmetric = 1,      /* basic orthogonal pattern; value set to 1 to match SYM_ASYM */
    odd, even,           /* orthogonal with bilateral symmetry */
    gutter,              /* orthogonal bilateral symmetry with empty column in middle */
 } mode;
@@ -319,11 +324,6 @@ unsigned char *causesBirth;
 
 char nttable2[512] ;
 
-void error(const char *s) {
-   fprintf(stderr, "%s\n", s) ;
-   exit(10) ;
-}
-
 int slowEvolveBit(int row1, int row2, int row3, int bshift){
    return nttable[(((row2>>bshift) & 2)<<7) | (((row1>>bshift) & 2)<<6)
                 | (((row1>>bshift) & 4)<<4) | (((row2>>bshift) & 4)<<3)
@@ -553,7 +553,7 @@ uint16_t *bmalloc(int siz) {
       memusage += 2*bbuf_left ;
       if (params[P_MEMLIMIT] >= 0 && memusage > memlimit) {
          printf("Aborting due to excessive memory usage\n") ;
-         exit(0) ;
+         exit(1) ;
       }
       bbuf = (uint16_t *)calloc(sizeof(uint16_t), bbuf_left) ;
    }
@@ -1322,7 +1322,7 @@ long currentDepth() {
 /*
 ** doCompact() has two parts.  The first part compresses the
 ** queue.  The second part consists of the last loop which
-** converts parent bits to back parent pointers.  The search
+** converts parent bits back to parent pointers.  The search
 ** state may be saved in between.  The queue dimensions, which
 ** were previously saved in local variables are saved in globals.
 */
@@ -1638,75 +1638,91 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /*  Print usage instructions  */
 /* ========================== */
 
-/* Note: currently reserving -v for potentially editing an array of extra variables */
-void usage(char *programName){
+void printHelp(const char *programName){
+   printf("Usage: %s "
 #ifndef QSIMPLE
-   printf("Usage: \"%s options\"\n", programName);
-   printf("  e.g. \"%s -r B3/S23 -p 3 -y 1 -w 6 -s even\"\n", programName);
-   printf("  searches Life (rule B3/S23) for c/3 orthogonal spaceships with\n");
-   printf("  even bilateral symmetry and a logical width of 6 (full width 12).\n");
-#else
-   printf("The period and offset must be set within the code before it is compiled.\n");
-   printf("You have compiled with\n");
+                    "-v <velocity> "
+#endif
+                    "-w <width> -s <symmetry> [options...]\n", programName);
+   printf("\n");
+   printf("qfind is a program that searches for orthogonal spaceships and waves in Life\n"
+          "and related cellular automata.  Options are read left to right, with subsequent\n"
+          "occurrences of the same option overwriting the previous value.\n");
+   printf("\n");
+#ifdef QSIMPLE
+   printf("When using qfind-s, the period and offset must be set within the code before it \n"
+          "is compiled.  You have compiled with\n");
    printf("\n");
    printf("Period: %d\n",PERIOD);
    printf("Offset: %d\n",OFFSET);
+   printf("\n");
 #endif
-   printf("\n");
-   printf("Available options:\n");
-   printf("  -r bNN/sNN  searches for spaceships in the specified rule (default: b3/s23)\n");
-   printf("              Non-totalistic rules can be entered using Hensel notation.\n");
-   printf("              Optionally, Use a tilde (~) to indicate forbidden conditions.\n");
-   printf("\n");
+   printf("Required (except when loading from a saved state):\n");
 #ifndef QSIMPLE
-   printf("  -p NN  searches for spaceships with period NN\n");
-   printf("  -y NN  searches for spaceships that travel NN cells every period\n");
+   printf("  -v,  --velocity <velocity>    written in the form <translation>c/<period>\n");
 #endif
-   printf("  -w NN  searches for spaceships with logical width NN\n");
-   printf("         (full width depends on symmetry type)\n");
-   printf("  -s FF  searches for spaceships with symmetry type FF\n");
-   printf("         Valid symmetry types are asymmetric, odd, even, and gutter.\n");
-   printf("  -o FF  searches for waves with boundary symmetry type FF\n");
-   printf("         (default: wave search disabled)\n");
-   printf("         Valid symmetry types are odd, even, gutter, and disabled.\n");
-   printf("  -e FF  uses rows in the file FF as the initial rows for the search\n");
-   printf("         (use the companion Golly Lua script to easily generate the\n");
-   printf("         initial row file)\n");
+   printf("  -w,  --width <number>         logical width (full width depends on symmetry)\n");
+   printf("  -s,  --symmetry <(asymmetric|odd|even|gutter)>  spaceship symmetry type\n");
    printf("\n");
-   printf("  -t NN  runs search using NN threads during deepening step (default: 1)\n");
-   printf("  -i NN  sets minimum deepening increment to NN (default: 3)\n");
-   printf("  -n NN  deepens to total depth at least NN during first deepening step\n");
-   printf("         (total depth includes depth of BFS queue)\n");
-   printf("  -g NN  stores depth-first extensions of length at least NN (default: 0)\n");
-   printf("  -f NN  stops search if NN spaceships are found (default: no limit)\n");
-   printf("  -q NN  sets the BFS queue size to 2^NN (default: %d)\n",QBITS);
-   printf("  -h NN  sets the hash table size to 2^NN (default: %d)\n",HASHBITS);
-   printf("         Use -h 0 to disable duplicate elimination.\n");
-   printf("  -b NN  groups 2^NN queue entries to an index node (default: 4)\n");
-   printf("  -m NN  limits memory usage to NN megabytes (default: no limit)\n");
-#ifndef NOCACHE
-   printf("  -c NN  allocates NN megabytes per thread for lookahead cache\n");
-   printf("         (default: %d if speed is greater than c/5 and disabled otherwise)\n",DEFAULT_CACHEMEM);
-   printf("         Use -c 0 to disable lookahead caching.\n");
-#endif
-   printf("  -z     toggles whether to output spaceships found during deepening step\n");
-   printf("         (default: output enabled for spaceships found during deepening step)\n");
-   printf("         Disabling is useful for searches that find many spaceships.\n");
+   printf("Search options:\n");
+   printf("  -r,  --rule <rule>            cellular automaton rule written in Hensel\n"
+          "                                notation (Default: B3/S23)\n"
+          "                                '~' is used to specify a list of forbidden\n"
+          "                                conditions.  e.g., -r B3~6c7/S23~8 searches\n"
+          "                                in B3/S23 for ships that never contain the B6c,\n"
+          "                                B7, or S8 neighborhoods.\n");
+   printf("  -t,  --threads <number>       number of threads during deepening (default: 1)\n");
+   printf("  -f,  --found <number>         maximum number of spaceships to output\n");
+   printf("  -i,  --increment <number>     minimum deepening increment (default: 3)\n");
+   printf("  -g,  --min-extension <number> minimum length of saved extensions\n");
+   printf("  -n,  --first-depth <number>   depth reached during first deepening step\n");
+   printf("  -e,  --extend <filename>      file containing the initial rows for a search\n"
+          "                                Use the Golly script find-rows.lua to easily\n"
+          "                                generate the initial rows file.\n");
+   printf("\n");
+   printf("Memory options:\n");
+   printf("  -c,  --cache-mem <number>     allocate N megabytes per thread for lookahead\n"
+          "                                cache (default: %d if speed is greater than c/5\n"
+          "                                and disabled otherwise)\n"
+          "                                Use -c 0 to disable lookahead caching.\n",DEFAULT_CACHEMEM);
+   printf("  -m,  --mem-limit <number>     limits lookup table memory to N megabytes\n");
+   printf("  -q,  --queue-bits <number>    set BFS queue size to 2^N nodes (default: %d)\n", QBITS);
+   printf("  -h,  --hash-bits <number>     set hash table size to 2^N nodes (default: %d)\n"
+          "                                Use -h 0 to disable duplicate elimination.\n", HASHBITS);
+   printf("  -b,  --base-bits <number>     groups 2^N queue entries to an index node\n"
+          "                                (default: 4)\n");
+   printf("\n");
+   printf("Save/load options:\n");
+   printf("  -d,  --dump <prefix-string>   dump search state after queue compaction to\n"
+          "                                files with the given filename prefix\n");
+   printf("  -l,  --load <filename>        load search state from the given file\n");
+   printf("  -j,  --split <number>         split loaded search state into at most N files\n");
+   printf("  -p,  --preview                preview partial results from the loaded state\n");
+   printf("\n");
+   printf("Output options (enabled by default):\n");
 #ifndef QSIMPLE
-   printf("  -k     toggles whether to output subperiodic spaceships\n");
-   printf("         (default: output enabled for subperiodic spaceships)\n");
+   printf("  (--enable-subperiod|--disable-subperiod)    enable/disable printing of\n"
+          "                                              subperiodic results\n");
 #endif
-   printf("  -a     toggles whether to output longest partial result at end of search\n");
-   printf("         (default: output enabled for longest partial result)\n");
+   printf("  (--enable-deep-print|--disable-deep-print)  enable/disable printing ships\n"
+          "                                              during deepening step\n");
+   printf("  (--enable-longest|--disable-longest)        enable/disable printing longest\n"
+          "                                              partial result at end of search\n");
+   
+   printf("Wave options:\n");
+   printf("  -o,  --boundary-sym <(disabled|asymmetric|odd|even|gutter)>\n"
+          "                                boundary symmetry type for wave searches\n");
    printf("\n");
-   printf("  -d FF  dumps the search state after each queue compaction using\n");
-   printf("         file name prefix FF\n");
-   printf("  -l FF  loads the search state from the file FF\n");
-   printf("  -j NN  splits the search state into at most NN files\n");
-   printf("         (uses the file name prefix defined by the -d option)\n");
-   printf("  -u     previews partial results from the loaded state\n");
+   printf("Documentation options:\n");
+   printf("  --help                        print usage instructions and exit\n");
+#ifndef QSIMPLE
    printf("\n");
-   printf("  --help  prints usage instructions and exits\n");
+   printf("Example search:\n"
+          "    %s -v c/5 -w 9 -s even -r B3/S23 -t 2\n"
+          "  Searches Life (rule B3/S23) for c/5 orthogonal spaceships with even\n"
+          "  bilateral symmetry and logical width 9 (full width 18) using two threads.\n", programName);
+#endif
+   exit(0);
 }
 
 /* ======================== */
@@ -1714,10 +1730,12 @@ void usage(char *programName){
 /* ======================== */
 
 void echoParams(){
+   printf("\n");
    printf("Rule: %s\n",rule);
-   printf("Period: %d\n",params[P_PERIOD]);
-   printf("Offset: %d\n",params[P_OFFSET]);
-   printf("Width:  %d\n",params[P_WIDTH]);
+   printf("speed: ");
+   if (params[P_OFFSET] != 1) printf("%d",params[P_OFFSET]);
+   printf("c/%d\n", params[P_PERIOD]);
+   printf("Width: %d\n", params[P_WIDTH]);
    if (params[P_SYMMETRY] == SYM_ASYM) printf("Symmetry: asymmetric\n");
    else if (params[P_SYMMETRY] == SYM_ODD) printf("Symmetry: odd\n");
    else if (params[P_SYMMETRY] == SYM_EVEN) printf("Symmetry: even\n");
@@ -1802,20 +1820,35 @@ static void preview(/*int allPhases*/) {
    }
 }
 
-/* ============================================================ */
-/*  Check parameters for validity and exit if there are errors  */
-/* ============================================================ */
+/* =============================== */
+/*  Check parameters for validity  */
+/* =============================== */
 
-int splitNum = 0;
 int loadDumpFlag = 0;
 int previewFlag = 0;
 int initRowsFlag = 0;
-int newLastDeep = 0;
 
-/* Returns the value of nttable (ignoring -1) for  */
-/* the given conditions or 2 if the conditions do  */
-/* not all have the same value.  Returns -1 if all */
-/* the given conditions have value -1 in nttable.  */
+void optError(const char *errorMsg, const char *opt) {
+   fprintf(stderr, "Error: %s%s\n", errorMsg, opt);
+   aborting = 1;
+}
+
+void printError(const char *errorMsg){
+   optError(errorMsg,"");
+}
+
+/* Reads and reports values from nttable for a range of conditions.
+** input: a string of birth conditions or a string
+**        of survival conditions (not both)
+**        (e.g., "B34-w6ci" or "S0123")
+**                                                   
+** output: the function returns -1 if all input
+**         conditions have value -1 in nttable;
+**         otherwise, it returns the value in
+**         nttable of the input conditions if they
+**         are all the same (ignoring -1), and it
+**         returns 2 if they are not the same.
+*/
 int checkConditions(const char *p) {
    int tempTab[256];
    int bs = 0;
@@ -1871,65 +1904,55 @@ int checkConditions(const char *p) {
    return val;
 }
 
-int checkRule() {
-   int exitFlag = 0;
-   
+void checkRule() {
    /* Errors: no meaningful results possible */
-   if (checkConditions("B0") == 1){
-      fprintf(stderr, "Error: rules with B0 are not supported.\n");
-      exitFlag = 1;
-   }
-   /* Included below are conditions that prevent spaceships     */
-   /* from existing.  For proofs of these conditions, see here: */
-   /* https://conwaylife.com/forums/viewtopic.php?f=11&t=5471   */
-   /* https://ics.uci.edu/~eppstein/ca/glider.c                 */
-   /*                                                           */
-   /*       x <= 0: none of the conditions are satisfied in     */
-   /*               the minimum rule                            */
-   /* (x+1)%2 == 0: all of the conditions are satisfied in      */
-   /*               the maximum rule                            */
+   if (checkConditions("B0") == 1)
+      printError("rules with B0 are not supported.");
+   
+   /* Included below are conditions that prevent spaceships from existing:
+   ** For proofs of these conditions, see here:
+   ** https://conwaylife.com/forums/viewtopic.php?f=11&t=5471
+   ** https://ics.uci.edu/~eppstein/ca/glider.c
+   **
+   **       x <= 0: none of the conditions are satisfied in
+   **               the minimum rule
+   ** (x+1)%2 == 0: all of the conditions are satisfied in
+   **               the maximum rule
+   */
    if (checkConditions("B0") == -1){
-      fprintf(stderr, "Error: any pattern that is not infinite in both dimensions must contain\n"
-                      "       the B0 neighborhood.\n");
-      exitFlag = 1;
+      printError("any pattern that is not infinite in both dimensions must contain the B0\n       "
+                 "neighborhood.");
    }
    if (checkConditions("B1c") == -1){
-      fprintf(stderr, "Error: spaceships and waves must contain the B1c neighborhood.\n");
-      exitFlag = 1;
+      printError("spaceships and waves must contain the B1c neighborhood.");
    }
    else if (checkConditions("B1e2a") == -1) {
-      fprintf(stderr, "Error: spaceships and waves must contain at least one of the B1e or B2a\n"
-                      "       neighborhoods.\n");
-      exitFlag = 1;
+      printError("spaceships and waves must contain at least one of the B1e or B2a\n       "
+                 "neighborhoods.");
    }
    if (checkConditions("B1c") == 1 && checkConditions("B0") == 0){
-      fprintf(stderr, "Error: patterns in rules with B1c and without B0 expand in all directions.\n");
-      exitFlag = 1;
+      printError("patterns in rules with B1c and without B0 expand in all directions.");
    }
    else if (checkConditions("B1e2a") == 1 && checkConditions("B0") == 0) {
-      fprintf(stderr, "Error: patterns in rules with B1e2a and without B0 expand in all directions.\n");
-      exitFlag = 1;
+      printError("patterns in rules with B1e2a and without B0 expand in all directions.");
    }
    /* The following checks are done only for spaceship searches */
    if ( (params[P_BOUNDARYSYM] == SYM_UNDEF || params[P_SYMMETRY] == SYM_ASYM) ){ 
       if (checkConditions("B012ac3i") <= 0){
-         fprintf(stderr, "Error: patterns in rules without any of B012ac3i cannot leave\n"
-                         "         their initial bounding box.\n");
-         exitFlag = 1;
+         printError("patterns in rules without any of B012ac3i cannot leave their initial\n       "
+                    "bounding box.");
       }
       if (checkConditions("B012ae3a") <= 0) {
-         fprintf(stderr, "Error: patterns in rules without any of B012ae3a cannot leave\n"
-                         "       their initial bounding diamond.\n");
-         exitFlag = 1;
+         printError("patterns in rules without any of B012ae3a cannot leave their initial\n       "
+                    "bounding diamond.");
       }
       if (checkConditions("B01245") <=0 && checkConditions("S012345") <= 0) {
-         fprintf(stderr, "Error: patterns in rules without any of B01245/S012345 cannot move a distance\n"
-                         "       of more than one cell outside their initial bounding diamond.\n");
-         exitFlag = 1;
+         printError("patterns in rules without any of B01245/S012345 cannot move a distance\n       "
+                    "of more than one cell outside their initial bounding diamond.");
       }
-      if ( checkConditions("B01e2a") <= 0 && 2 * params[P_OFFSET] > params[P_PERIOD]){
-         fprintf(stderr, "Error: orthogonal spaceship speed limit in rules without any of B01e2a is c/2.\n");
-         exitFlag = 1;
+      if ( checkConditions("B01e2a") <= 0 && 2 * params[P_OFFSET] > params[P_PERIOD]
+                                          && params[P_PERIOD] > 0 ){
+         printError("orthogonal spaceship speed limit in rules without any of B01e2a is c/2.");
       }
    }
    
@@ -1938,6 +1961,10 @@ int checkRule() {
       if (checkConditions("B0") == 0 && (checkConditions("B23")+1)%2 == 0 && (checkConditions("S0")+1)%2 == 0){
          fprintf(stderr, "Warning: no spaceships exist in rules with all of B23/S0 and without B0,\n"
                          "         because the trailing edge of a pattern cannot die.\n");
+      }
+      else if (checkConditions("B0") == 0 && checkConditions("B123") >= 1 && (checkConditions("S0123")+1)%2 == 0){
+         fprintf(stderr, "Warning: no spaceships exist in rules with one of B1, B2, or B3, all of S0123,\n"
+                         "         and without B0, because the trailing edge of a pattern cannot die.\n");
       }
       if ((checkConditions("S012acek3aijn4a")+1)%2 == 0){
          fprintf(stderr, "Warning: no spaceships exist in rules with all of S012acek3aijn4a and\n"
@@ -1961,18 +1988,13 @@ int checkRule() {
                          "         immortal triangle.\n");
       }
    }
-   
-   return exitFlag;
 }
 
-int checkGutter(){
-   int exitFlag = 0;
+void checkGutter(){
    int i = 0;
-   int forbiddenBirths = 0;
+   /* if there are forbidden birth conditions, i will be less than 256 */
    while (i < 256 && nttable[i] != -1)
       i++;
-   if (i < 256)
-      forbiddenBirths = 1;
    
    if(checkConditions("B2ce4ci6i") <= 0)
       gutterSkew = 0;
@@ -1981,97 +2003,65 @@ int checkGutter(){
    else if(checkConditions("B12aikn3cqr4cnyz5er6i") <= 0)
       gutterSkew = 2;
    else {
-      fprintf(stderr, "Error: gutters do not work with the given birth conditions.\n"
-                      "       The forbidden birth conditions for different gutter types are\n"
-                      "         Skew 0: B2ce4ci6i\n"
-                      "         Skew 1: B1c2kn3ny4yz5r6i\n"
-                      "         Skew 2: B12aikn3cqr4cnyz5er6i\n");
-      exitFlag = 1;
+      printError("gutters do not work with the given birth conditions.\n       "
+                 "The forbidden birth conditions for different gutter types are\n       "
+                 "  Skew 0: B2ce4ci6i\n       "
+                 "  Skew 1: B1c2kn3ny4yz5r6i\n       "
+                 "  Skew 2: B12aikn3cqr4cnyz5er6i");
    }
-   if (gutterSkew && forbiddenBirths)
+   if (gutterSkew && i < 256)
       fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along a skew gutter.\n");
-   
-   return exitFlag;
 }
 
 void checkParams(){
-   int exitFlag = 0;
    const char *ruleError;
    
    /* Errors */
    ruleError = parseRule(rule, nttable);
    
    if (ruleError != 0){
-      fprintf(stderr, "Error: failed to parse rule %s\n", rule);
+      optError("failed to parse rule ", rule);
       fprintf(stderr, "       %s\n", ruleError);
-      exitFlag = 1;
    }
    else
-      exitFlag |= checkRule();
+      checkRule();
    
    if(params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)
-      exitFlag |= checkGutter();
+      checkGutter();
    
 #ifdef QSIMPLE
-   if (gcd(PERIOD,OFFSET) > 1){
-      fprintf(stderr, "Error: qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.\n");
-      exitFlag = 1;
-   }
-   if (params[P_WIDTH] < 1){
-       fprintf(stderr, "Error: width (-w) must be a positive integer.\n");
-       exitFlag = 1;
-   }
+   if (gcd(PERIOD,OFFSET) > 1)
+      printError("qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.");
 #else
-   if (params[P_WIDTH] < 1 || params[P_PERIOD] < 1 || params[P_OFFSET] < 1){
-      fprintf(stderr, "Error: period (-p), translation (-y), and width (-w) must be positive integers.\n");
-      exitFlag = 1;
-   }
-   if (params[P_PERIOD] > MAXPERIOD){
-      fprintf(stderr, "Error: maximum allowed period (%d) exceeded.\n", MAXPERIOD);
-      exitFlag = 1;
-   }
-   if (params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: translation (-y) cannot exceed period (-p).\n");
-      exitFlag = 1;
-   }
-   if (params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0){
-      fprintf(stderr, "Error: photons are not supported.\n");
-      exitFlag = 1;
-   }
+   if (params[P_PERIOD] > MAXPERIOD)
+      printError("maximum allowed period (" XSTR(MAXPERIOD) ") exceeded.");
+   if (params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0)
+      printError("translation cannot exceed period.");
+   if (params[P_OFFSET] == params[P_PERIOD] && params[P_PERIOD] > 0)
+      printError("photons are not supported.");
 #endif
-   if (params[P_SYMMETRY] == SYM_UNDEF){
-      fprintf(stderr, "Error: you must specify a symmetry type (-s).\n");
-      exitFlag = 1;
-   }
-   if (params[P_BOUNDARYSYM] == SYM_ASYM){
-      fprintf(stderr, "Error: asymmetric wave searching is not supported.\n");
-      exitFlag = 1;
-   }
-   if (previewFlag && !loadDumpFlag){
-      fprintf(stderr, "Error: the search state must be loaded from a file to preview partial results.\n");
-      exitFlag = 1;
-   }
+   if (params[P_PERIOD] == 0)
+      printError("you must specify a velocity (-v).");
+   if (params[P_WIDTH] == 0)
+      printError("you must specify a width (-w).");
+   if (params[P_SYMMETRY] == SYM_UNDEF)
+      printError("you must specify a symmetry type (-s).");
+   if (params[P_BOUNDARYSYM] == SYM_ASYM)
+      printError("asymmetric wave searching is not supported.");
+   if (previewFlag && !loadDumpFlag)
+      printError("the search state must be loaded from a file to preview partial results.\n");
    if (initRowsFlag && loadDumpFlag){
-      fprintf(stderr, "Error: initial rows file cannot be used when the search state is loaded from a\n"
-                      "       saved state.\n");
-      exitFlag = 1;
+      printError("initial rows file cannot be used when the search state is loaded from a\n       "
+                 "saved state.");
    }
-   if (params[P_QBITS] <= 0){
-      fprintf(stderr, "Error: queue bits (-q) must be positive.\n");
-      exitFlag = 1;
-   }
-   if (params[P_BASEBITS] <= 0){
-      fprintf(stderr, "Error: base bits (-b) must be positive.\n");
-      exitFlag = 1;
-   }
-   if (params[P_BASEBITS] >= params[P_QBITS]){
-      fprintf(stderr, "Error: base bits (-b) must be less than queue bits (-q).\n");
-      exitFlag = 1;
-   }
-   if (params[P_HASHBITS] < 0){
-      fprintf(stderr, "Error: hash bits (-h) must be nonnegative.\n");
-      exitFlag = 1;
-   }
+   if (params[P_QBITS] <= 0)
+      printError("queue bits (-q) must be positive.");
+   if (params[P_BASEBITS] <= 0)
+      printError("base bits (-b) must be positive.");
+   if (params[P_BASEBITS] >= params[P_QBITS])
+      printError("base bits (-b) must be less than queue bits (-q).");
+   if (params[P_HASHBITS] < 0)
+      printError("hash bits (-h) must be nonnegative.");
    
    /* Warnings */
    if (2 * params[P_OFFSET] > params[P_PERIOD] && params[P_PERIOD] > 0){
@@ -2095,7 +2085,7 @@ void checkParams(){
       mode = (Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
-   if(params[P_QBITS] > 38 && !exitFlag){
+   if(params[P_QBITS] > 38 && !aborting){
       fprintf(stderr, "Warning: queue bits (-q) reduced to 38.\n");
       params[P_QBITS] = 38;      /* corresponds to a queue size of 550GB */
       if(params[P_BASEBITS] > params[P_QBITS]){
@@ -2103,23 +2093,19 @@ void checkParams(){
          params[P_BASEBITS] = 36;
       }
    }
-   if(params[P_HASHBITS] > 36 && !exitFlag){
+   if(params[P_HASHBITS] > 36 && !aborting){
       fprintf(stderr, "Warning: hash bits (-h) reduced to 38.\n");
       params[P_HASHBITS] = 36;   /* corresponds to a hash table size of 550GB */
    }
    
-   /* exit if there are errors */
-   if(exitFlag){
-      fprintf(stderr, "\nUse --help for a list of available options.\n");
-      exit(1);
-   }
-   fprintf(stderr, "\n");
 }
 
 /* ============================ */
 /*  Load saved state from file  */
 /* ============================ */
 
+int splitNum = 0;
+int newLastDeep = 0;
 char * loadFile;
 
 void loadFail(){
@@ -2196,7 +2182,7 @@ void loadState(){
    rows = (row*)malloc(QSIZE*sizeof(row));
    if (base == 0 || rows == 0) {
       printf("Unable to allocate BFS queue!\n");
-      exit(0);
+      exit(1);
    }
    
    if (hashBits == 0) hash = 0;
@@ -2213,7 +2199,7 @@ void loadState(){
    qHead += qStart;
    if (qStart > QSIZE || qStart < QSIZE/16) {
       printf("BFS queue is too small for saved state\n");
-      exit(0);
+      exit(1);
    }
    for (i = qStart; i < qEnd; ++i)
       rows[i] = (row) loadUInt(fp);
@@ -2298,9 +2284,9 @@ void loadInitRows(char * file){
    fclose(fp);
 }
 
-/* ================================= */
-/*  Parse options and set up search  */
-/* ================================= */
+/* ============== */
+/*  Set Defaults  */
+/* ============== */
 
 void setDefaultParams(){
 #ifdef QSIMPLE
@@ -2333,171 +2319,372 @@ void setDefaultParams(){
    params[P_BOUNDARYSYM] = SYM_UNDEF;
 }
 
-/* Note: currently reserving -v for potentially editing an array of extra variables */
-void parseOptions(int argc, char *argv[]){
-   char *programName = argv[0];
-   if(argc <= 1){
-      usage(programName);
-      exit(0);
-   }
-   while(--argc > 0){               /* read input parameters */
-      if ((*++argv)[0] == '-'){
-         switch ((*argv)[1]){
-            case 'r': case 'R':
-               --argc;
-               rule = *++argv;
-               break;
-#ifndef QSIMPLE
-            case 'p': case 'P':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_PERIOD]);
-               break;
-            case 'y': case 'Y':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_OFFSET]);
-               break;
-            case 'k': case 'K':
-               params[P_FULLPERIOD] ^= 1;
-               break;
-#endif
-            case 'w': case 'W':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_WIDTH]);
-               break;
-            case 's': case 'S':
-               --argc;
-               switch((*++argv)[0]) {
-                  case 'a': case 'A':
-                     params[P_SYMMETRY] = SYM_ASYM; mode = asymmetric; break;
-                  case 'o': case 'O':
-                     params[P_SYMMETRY] = SYM_ODD; mode = odd; break;
-                  case 'e': case 'E':
-                     params[P_SYMMETRY] = SYM_EVEN; mode = even; break;
-                  case 'g': case 'G':
-                     params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
-                  default:
-                     fprintf(stderr, "Error: unrecognized symmetry type %s\n", *argv);
-                     fprintf(stderr, "\nUse --help for a list of available options.\n");
-                     exit(1);
-                     break;
+/* =============== */
+/*  Parse options  */
+/* =============== */
+
+#define no_argument       (0)
+#define required_argument (1)
+#define optional_argument (2)
+
+struct option {
+   const char *name;
+   int has_arg;
+   int val;
+};
+
+/* Nonstandard getopt:
+** This is a simple implementation of a getopt-like function.
+** It's missing several features that ordinary getopt() has.
+**
+**   Input: int argc and char *argv[]:
+**             from main(int argc, char *argv[])
+**          const char *shortOpts:
+**             a string of valid option characters.  If a character is
+**             followed by a single colon it has a required argument.
+**             If it is followed by two colons it has an optional argument.
+**          struct option *longOpts:
+**             a list of long option names, their associated return values,
+**             and a member indicating it it has an argument and whether
+**             that argument is optional or not.
+**          char **optName and char **optArg:
+**             passed by reference to save pointers to option names and
+**             arguments.
+** Updated: *optName and *optArg are passed by reference.  *optArg
+**          will point to the element of argv[] corresponding to the
+**          argument of the specified option or be NULL if there is
+**          no such argument.  i is stored statically, so repeated
+**          calls to my_getopt() will traverse argv[].
+** Returns: returns the option character (as (int)) for the specified
+**          option if it is a short option ("-<character>") included
+**          in the string *shortOpts or if it is a long option
+**          ("--<string>") included in *longOpts.
+**          If a required argument is not present, either ':' or '?'
+**          will be returned, depending on whether ':' is the first
+**          character of *shortOpts or not.
+**          Returns '?' if the option is in neither *shortOpts nor
+**          *longOpts.
+*/
+int my_getopt( int argc,
+               char *argv[],
+               const char *shortOpts,
+               struct option *longOpts,
+               char **optName,
+               char **optArg   )
+{
+   static int i = 0;
+   const char *charInd;
+   *optArg = NULL;
+   if (++i == argc)  /* we're at the end of argv */
+      return -1;
+   *optName = argv[i];
+   if (argv[i][0] == '-'){
+      if (argv[i][1] == '\0')
+         return '?';
+      /* check if short option is contained in short option list */
+      else if (argv[i][1] != '-' && argv[i][2] == '\0' && (charInd = strchr(shortOpts, argv[i][1]))){
+         if (*(charInd+1) == ':'){
+            if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
+               if (*(charInd+2) == ':')
+                  return (int)argv[i][1];
+               return (shortOpts[0] == ':' ? ':' : '?');
+            }
+            else{
+               *optArg = argv[++i];
+               return (int)argv[i-1][1];
+            }
+         }
+         return (int)argv[i][1];
+      }
+      /* check if long option is contained in long option list */
+      else if (argv[i][1] == '-') {
+         while (longOpts->name != 0 && strcmp(argv[i] + 2, longOpts->name)) 
+            longOpts++;
+         if (longOpts->name){
+            if (longOpts->has_arg){
+               if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
+                  if (longOpts->has_arg == optional_argument)
+                     return longOpts->val;
+                  return (shortOpts[0] == ':' ? ':' : '?');
                }
-               break;
-            case 'o': case 'O':
-               --argc;
-               switch((*++argv)[0]) {
-                  case 'a': case 'A':
-                     params[P_BOUNDARYSYM] = SYM_ASYM; break;
-                  case 'o': case 'O':
-                     params[P_BOUNDARYSYM] = SYM_ODD; break;
-                  case 'e': case 'E':
-                     params[P_BOUNDARYSYM] = SYM_EVEN; break;
-                  case 'g': case 'G':
-                     params[P_BOUNDARYSYM] = SYM_GUTTER; break;
-                  case 'd': case 'D':
-                     params[P_BOUNDARYSYM] = SYM_UNDEF; break;
-                  default:
-                     fprintf(stderr, "Error: unrecognized symmetry type %s\n", *argv);
-                     fprintf(stderr, "\nUse --help for a list of available options.\n");
-                     exit(1);
-                     break;
-               }
-               break;
-            case 'm': case 'M':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_MEMLIMIT]);
-               break;
-            case 'n': case 'N':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_LASTDEEP]);
-               newLastDeep = 1;
-               break;
-            case 'c': case 'C':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_CACHEMEM]);
-               break;
-            case 'i': case 'I':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_MINDEEP]);
-               break;
-            case 'q': case 'Q':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_QBITS]);
-               break;
-            case 'h': case 'H':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_HASHBITS]);
-               break;
-            case 'b': case 'B':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_BASEBITS]);
-               break;
-            case 't': case 'T':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_NUMTHREADS]);
-               break;
-            case 'f': case 'F':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_NUMSHIPS]);
-               break;
-            case 'g': case 'G':
-               --argc;
-               sscanf(*++argv, "%d", &params[P_MINEXTENSION]);
-               break;
-            case 'z': case 'Z':
-               params[P_PRINTDEEP] ^= 1;
-               break;
-            case 'a': case 'A':
-               params[P_LONGEST] ^= 1;
-               break;
-            case 'u': case 'U':
-               previewFlag = 1;
-               break;
-            case 'd': case 'D':
-               --argc;
-               dumpRoot = *++argv;
-               params[P_CHECKPOINT] = 1;
-               break;
-            case 'j': case 'J':
-               --argc;
-               sscanf(*++argv, "%d", &splitNum);
-               if(splitNum < 0) splitNum = 0;
-               break;
-            case 'e': case 'E':
-               --argc;
-               initRows = *++argv;
-               initRowsFlag = 1;
-               break;
-            case 'l': case 'L':
-               --argc;
-               loadFile = *++argv;
-               loadDumpFlag = 1;
-               loadParams();
-               break;
-            case '-':
-               if(!strcmp(*argv,"--help") || !strcmp(*argv,"--Help")){
-                  usage(programName);
-                  exit(0);
-               }
-               else{
-                  fprintf(stderr, "Error: unrecognized option %s\n", *argv);
-                  fprintf(stderr, "\nUse --help for a list of available options.\n");
-                  exit(1);
-               }
-               break;
-           default:
-              fprintf(stderr, "Error: unrecognized option %s\n", *argv);
-              fprintf(stderr, "\nUse --help for a list of available options.\n");
-              exit(1);
-              break;
+               else
+                  *optArg = argv[++i];
+            }
+            return longOpts->val;
          }
       }
-      else{
-         fprintf(stderr, "Error: unrecognized option %s\n", *argv);
-         fprintf(stderr, "\nUse --help for a list of available options.\n");
-         exit(1);
+   }
+   return '?';
+}
+
+int readInt(char *opt, char *arg){
+   int c;
+   if (arg == 0){
+      aborting = 1;
+      return 0;
+   }
+   if (!sscanf(arg, "%d", &c)){
+      fprintf(stderr, "Error: invalid argument %s in option %s.\n", arg, opt);
+      aborting = 1;
+   }
+   return c;
+}
+
+const char *parseVelocity(char *velString, int *per, int *off){
+   int xoff = 0;
+   *per = 1;
+   *off = 1;
+   if (!strcmp(velString,"c") || sscanf(velString, "c/%d", per) == 1)
+      return 0;
+   else if (sscanf(velString, "%dc/%d", off, per) == 2){
+      if (*off == 0)
+         return "oscillator searches are not supported.";
+      else if (*off < 0)
+         return "offset must be positive.";
+      else
+         return 0;
+   }
+   else if (sscanf(velString, "(%d,%d)c/%d", off, &xoff, per) == 3){
+      if (xoff != 0) {
+         if (*off == 0){
+            *off = xoff;
+            xoff = 0;
+            return 0;
+         }
+         else if (xoff == *off || xoff * (-1) == *off)
+            return "diagonal spaceship searches are not supported.";
+         else
+            return "oblique spaceship searches are not supported.";
+      }
+      else if (*off == 0)
+         return "oscillator searches are not supported.";
+      else if (*off < 0)
+         return "offset must be positive.";
+      
+      return 0;
+   }
+   
+   return "Unable to read offset and period.";
+}
+
+void parseOptions(int argc, char *argv[]){
+   char *optArg = 0;
+   char *optName = 0;
+   int c;
+   
+   if (argc <= 1)
+      printHelp(argc ? argv[0] : "qfind");
+   
+   /* list of long options */
+   struct option options[] = {
+   // {"",                          no_argument,        -1},   /* end option parsing when "--" encountered */
+      {"help",                      no_argument,       256},
+      {"rule",                      required_argument, 'r'},
+      {"width",                     required_argument, 'w'},
+      {"symmetry",                  required_argument, 's'},
+      {"boundary-sym",              required_argument, 'o'},
+      {"boundary-symmetry",         required_argument, 'o'},
+      {"mem-limit",                 required_argument, 'm'},
+      {"memory-limit",              required_argument, 'm'},
+      {"cache-mem",                 required_argument, 'c'},
+      {"cache-memory",              required_argument, 'c'},
+      {"first-depth",               required_argument, 'n'},
+      {"increment",                 required_argument, 'i'},
+      {"queue-bits",                required_argument, 'q'},
+      {"hash-bits",                 required_argument, 'h'},
+      {"base-bits",                 required_argument, 'b'},
+      {"threads",                   required_argument, 't'},
+      {"found",                     required_argument, 'f'},
+      {"min-extension",             required_argument, 'g'},
+      {"minimum-extension",         required_argument, 'g'},
+      {"extend",                    required_argument, 'e'},
+      {"dump",                      required_argument, 'd'},
+      {"load",                      required_argument, 'l'},
+      {"split",                     required_argument, 'j'},
+      {"preview",                   no_argument,       'p'},
+#ifndef QSIMPLE
+      {"velocity",                  required_argument, 'v'},
+      {"enable-subperiod",          no_argument,       257},
+      {"enable-subperiodic",        no_argument,       257},
+      {"disable-subperiod",         no_argument,       258},
+      {"disable-subperiodic",       no_argument,       258},
+#endif
+      {"enable-deep-print",         no_argument,       259},
+      {"disable-deep-print",        no_argument,       260},
+      {"enable-longest",            no_argument,       261},
+      {"disable-longest",           no_argument,       262},
+      {0, 0, 0}   /* marks end of long options list */
+   };
+   
+   while ( (c = my_getopt( argc,
+                           argv,
+                           ":"   /* List of short options; "<option>:" means argument required */
+#ifndef QSIMPLE
+                           "kKv:V:"
+#endif
+                           "b:c:d:e:f:g:h:i:j:l:m:n:o:p:q:r:s:t:w:z"    /* Currently unused: */
+                           "B:C:D:E:F:G:H:I:J:L:M:N:O:P:Q:R:S:T:W:Z",   /* a,u,x,y,A,U,X,Y   */
+                           options,
+                           &optName,
+                           &optArg)) != -1)
+   {
+      switch (c) {
+         case 'r': case 'R':
+            rule = optArg;
+            break;
+#ifndef QSIMPLE
+         case 'v': case 'V':
+         {
+            const char *velError = 0;
+            velError = parseVelocity(optArg, &params[P_PERIOD], &params[P_OFFSET]);
+            if (velError){
+               optError("invalid velocity ", optArg);
+               fprintf(stderr, "       %s\n", velError);
+               /* prevent additional error message in checkParams() */
+               params[P_PERIOD] = 2; params[P_OFFSET] = 1;
+            }
+            if (params[P_PERIOD] <= 0){
+               optError("invalid velocity ", optArg);
+               fprintf(stderr, "       Period must be positive\n");
+               /* prevent additional error message in checkParams() */
+               params[P_PERIOD] = 2; params[P_OFFSET] = 1;
+            }
+            break;
+         }
+         case 'k': case 'K':
+            params[P_FULLPERIOD] ^= 1;
+            break;
+         case 257:   /* --enable-full-period */
+            params[P_FULLPERIOD] = 1;
+            break;
+         case 258:   /* --disable-full-period */
+            params[P_FULLPERIOD] = 0;
+            break;
+#endif
+         case 'w': case 'W':
+            params[P_WIDTH] = readInt(optName, optArg);
+            if (params[P_WIDTH] <= 0){
+               printError("width must be positive");
+               params[P_WIDTH] = 1;    /* prevent additional error message in checkParams() */
+            }
+            break;
+         case 's': case 'S':
+            switch(optArg[0]) {
+               case 'a': case 'A':
+                  params[P_SYMMETRY] = SYM_ASYM; mode = asymmetric; break;
+               case 'o': case 'O':
+                  params[P_SYMMETRY] = SYM_ODD; mode = odd; break;
+               case 'e': case 'E':
+                  params[P_SYMMETRY] = SYM_EVEN; mode = even; break;
+               case 'g': case 'G':
+                  params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
+               default:
+                  optError("unrecognized symmetry type ", optArg);
+                  break;
+            }
+            break;
+         case 'o': case 'O':
+            switch(optArg[0]) {
+               case 'a': case 'A':
+                  params[P_BOUNDARYSYM] = SYM_ASYM; break;
+               case 'o': case 'O':
+                  params[P_BOUNDARYSYM] = SYM_ODD; break;
+               case 'e': case 'E':
+                  params[P_BOUNDARYSYM] = SYM_EVEN; break;
+               case 'g': case 'G':
+                  params[P_BOUNDARYSYM] = SYM_GUTTER; break;
+               case 'd': case 'D':
+                  params[P_BOUNDARYSYM] = SYM_UNDEF; break;
+               default:
+                  optError("unrecognized symmetry type ", optArg);
+                  break;
+            }
+            break;
+         case 'm': case 'M':
+            params[P_MEMLIMIT] = readInt(optName, optArg);
+            break;
+         case 'n': case 'N':
+            params[P_LASTDEEP] = readInt(optName, optArg);
+            newLastDeep = 1;
+            break;
+         case 'c': case 'C':
+            params[P_CACHEMEM] = readInt(optName, optArg);
+            break;
+         case 'i': case 'I':
+            params[P_MINDEEP] = readInt(optName, optArg);
+            break;
+         case 'q': case 'Q':
+            params[P_QBITS] = readInt(optName, optArg);
+            break;
+         case 'h': case 'H':
+            params[P_HASHBITS] = readInt(optName, optArg);
+            break;
+         case 'b': case 'B':
+            params[P_BASEBITS] = readInt(optName, optArg);
+            break;
+         case 't': case 'T':
+            params[P_NUMTHREADS] = readInt(optName, optArg);
+            break;
+         case 'f': case 'F':
+            params[P_NUMSHIPS] = readInt(optName, optArg);
+            break;
+         case 'g': case 'G':
+            params[P_MINEXTENSION] = readInt(optName, optArg);
+            break;
+         case 'z': case 'Z':
+            params[P_PRINTDEEP] ^= 1;
+            break;
+         case 'p': case 'P':
+            previewFlag = 1;
+            break;
+         case 'd': case 'D':
+            dumpRoot = optArg;
+            params[P_CHECKPOINT] = 1;
+            break;
+         case 'j': case 'J':
+            splitNum = readInt(optName, optArg);
+            if(splitNum < 0) splitNum = 0;
+            break;
+         case 'e': case 'E':
+            initRows = optArg;
+            initRowsFlag = 1;
+            break;
+         case 'l': case 'L':
+            loadFile = optArg;
+            loadDumpFlag = 1;
+            loadParams();
+            break;
+         case 259:   /* --enable-deep-printing */
+            params[P_PRINTDEEP] = 1;
+            break;
+         case 260:   /* --disable-deep-printing */
+            params[P_PRINTDEEP] = 0;
+            break;
+         case 261:   /* --enable-longest-partial */
+            params[P_LONGEST] = 1;
+            break;
+         case 262:   /* --disable-longest-partial */
+            params[P_LONGEST] = 0;
+            break;
+         case 256:   /* --help */
+            printHelp(argv[0]);
+            break;
+         case ':':
+            optError("missing argument for option ", optName);
+            break;
+         case '?':
+            optError("unrecognized option ", optName);
+            break;
+         default:
+            printError("option parser failed");
+            break;
       }
    }
 }
+
+/* ========================================= */
+/*  Set up search with the given parameters  */
+/* ========================================= */
 
 void searchSetup(){
    if (params[P_CACHEMEM] < 0){
@@ -2506,6 +2693,11 @@ void searchSetup(){
    }
    
    checkParams();  /* Exit if parameters are invalid */
+   
+   if (aborting){
+      fprintf(stderr, "\nUse --help for a list of available options.\n");
+      exit(1);
+   }
    
    if(loadDumpFlag) loadState();
    else {
@@ -2523,7 +2715,7 @@ void searchSetup(){
       rows = (row*)malloc(QSIZE*sizeof(row));
       if (base == 0 || rows == 0) {
          printf("Unable to allocate BFS queue!\n");
-         exit(0);
+         exit(1);
       }
       
       if (hashBits == 0) hash = 0;
@@ -2703,7 +2895,7 @@ void searchSetup(){
    memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
    if(params[P_MEMLIMIT] >= 0 && memusage > memlimit){
       printf("Not enough memory to allocate lookahead cache\n");
-      exit(0);
+      exit(1);
    }
    totalCache = (struct cacheentry *)calloc(sizeof(cacheentry),
          (cachesize + 5) * params[P_NUMTHREADS]) ;
