@@ -20,11 +20,13 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.3 by Matthias Merzenich, 19 March 2023"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 13 September 2024"
 
-#define FILEVERSION ((unsigned long) 2024090801)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2024091301)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
+#define MAXDUMPROOT 50     /* maximum allowed length of dump root */
+#define DUMPLIMIT 100000   /* maximum allowed number of sequential dumps */
 #define CHUNK_SIZE 64
 #define QBITS 20
 #define HASHBITS 20
@@ -36,7 +38,7 @@
 #define P_OFFSET 2
 #define P_SYMMETRY 3
 #define P_REORDER 4           /* currently cannot be set at runtime */
-#define P_CHECKPOINT 5
+#define P_DUMPMODE 5
 #define P_BASEBITS 6
 #define P_QBITS 7
 #define P_HASHBITS 8
@@ -52,8 +54,9 @@
 #define P_MINEXTENSION 18
 #define P_FULLPERIOD 19
 #define P_BOUNDARYSYM 20
+#define P_DUMPINTERVAL 21
 
-#define NUM_PARAMS 21U
+#define NUM_PARAMS 22U
 
 #define SYM_UNDEF 0
 #define SYM_ASYM 1
@@ -62,8 +65,8 @@
 #define SYM_GUTTER 4
 
 const char *rule = "B3/S23";     /* Default rule set to B3/S23 (Life) */
-char loadRule[256];              /* Used for loading rule from file */
-char trueRule[256];              /* Used in case of forbidden conditions */
+char loadRule[151];              /* Used for loading rule from file */
+char trueRule[151];              /* Used in case of forbidden conditions */
 
 char *initRows;
 
@@ -1220,30 +1223,80 @@ static inline int qTop() { return qTail - 1; }
 
 int dumpNum = 1;
 char dumpFile[256];
-const char *dumpRoot = "dump";
+const char *dumpRoot = "dump-@-";
 char loadDumpRoot[251];    /* used for loading dump root from file */
+char trueDumpRoot[251];
+time_t lastDumpTime;
+
 int dumpFlag = 0;    /* Dump status flags, possible values follow */
+#define DUMPRESET   (0)
 #define DUMPPENDING (1)
 #define DUMPFAILURE (2)
 #define DUMPSUCCESS (3)
 
-FILE * openDumpFile()
-{
-   FILE * fp;
+int dumpMode;  /* separate from params[P_DUMPMODE] for splitting */
+#define D_DISABLED   (0)
+#define D_OVERWRITE  (1)
+#define D_SEQUENTIAL (2)
 
-   while (dumpNum < 100000)
-   {
-      sprintf(dumpFile,"%s%05d",dumpRoot,dumpNum++);
-      if ((fp=fopen(dumpFile,"r")))
-         fclose(fp);
-      else
-         return fopen(dumpFile,"w");
+void parseDumpRoot(){
+   char tempStr[MAXDUMPROOT + 10]  = {'\0'};
+   char tempRule[151] = {'\0'};
+   char *r, *t;
+   const char *s;
+   memset(trueDumpRoot, '\0', 251);
+   
+   /* replace '@' with hex timestamp */
+   if ((s = strchr(dumpRoot, '@'))){
+      memcpy(tempStr, dumpRoot, s - dumpRoot);
+      sprintf(trueDumpRoot, "%s%06lx%s", tempStr, time(NULL) & 0xffffff, s+1);
+   }
+   else
+      memcpy(trueDumpRoot, dumpRoot, MAXDUMPROOT + 9);
+   
+   /* replace '^' with rule string ('/' replaced with '_') */
+   memcpy(tempStr, trueDumpRoot, MAXDUMPROOT + 9);
+   if ((t = strchr(tempStr, '^'))){
+      memcpy(tempRule, rule, 150);
+      r = strchr(tempRule, '/');
+      *r = '_';
+      *t = '\0';
+      sprintf(trueDumpRoot, "%s%s%s", tempStr, tempRule, t+1);
+   }
+   
+   /* replace additional occurrences of '@' and '^' with '_' */
+   r = trueDumpRoot - 1;
+   while(*(++r) != '\0')
+      if (*r == '@' || *r == '^')
+         *r = '_';
+   
+   dumpRoot = trueDumpRoot;
+}
+
+FILE * openDumpFile() {
+   FILE * fp;
+   
+   if (dumpMode == D_OVERWRITE) {
+      sprintf(dumpFile, "%s%s", dumpRoot, (++dumpNum)%2 ? "gold" : "blue");
+      return fopen(dumpFile, "w");
+   }
+   else if (dumpMode == D_SEQUENTIAL){
+      while (dumpNum < DUMPLIMIT) {
+         sprintf(dumpFile, "%s%05d", dumpRoot, dumpNum++);
+         if ((fp = fopen(dumpFile, "r")))
+            fclose(fp);
+         else
+            return fopen(dumpFile, "w");
+      }
+      if (dumpNum == DUMPLIMIT){
+         dumpMode = D_OVERWRITE;
+         return openDumpFile();
+      }
    }
    return (FILE *) 0;
 }
 
-void dumpState()
-{
+void dumpState() {
    FILE * fp;
    unsigned long long i,j;
    dumpFlag = DUMPFAILURE;
@@ -1257,6 +1310,10 @@ void dumpState()
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
    fprintf(fp,"%d\n",mode);
+   if (params[P_DUMPMODE] == D_SEQUENTIAL)
+      fprintf(fp,"1\n");
+   else
+      fprintf(fp,"%d\n",dumpNum%2);
    fprintf(fp,"%u\n",qHead-qStart);
    fprintf(fp,"%u\n",qEnd-qStart);
    for (i = qStart; i < qEnd; ++i)
@@ -1319,12 +1376,10 @@ long currentDepth() {
    return i;
 }
 
-/*
-** doCompact() has two parts.  The first part compresses the
+/* doCompact() has two parts.  The first part compresses the
 ** queue.  The second part consists of the last loop which
 ** converts parent bits back to parent pointers.  The search
-** state may be saved in between.  The queue dimensions, which
-** were previously saved in local variables are saved in globals.
+** state may be saved in between.
 */
 
 void doCompactPart1()
@@ -1520,26 +1575,24 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
 
 static void deepen(){
    node i;
-
+   
    /* compute amount to deepen, apply reduction if too deep */
    timeStamp();
    printf("Queue full");
    i = currentDepth();
    if (i >= (unsigned long long)params[P_LASTDEEP]) deepeningAmount = MINDEEP;
    else deepeningAmount = params[P_LASTDEEP] + MINDEEP - i;   /* go at least MINDEEP deeper */
-
+   
    params[P_LASTDEEP] = i + deepeningAmount;
-
+   
    /* start report of what's happening */
    printf(", depth %ld, deepening %d, ", (long int) i, deepeningAmount);
    putnum(qTail - qHead);
    printf("/");
    putnum(qTail);
    fflush(stdout);
-
-
-   /* go through queue, deepening each one */
    
+   /* go through queue, deepening each one */
    #pragma omp parallel
    {
       node j;
@@ -1568,7 +1621,10 @@ static void deepen(){
    fflush(stdout);
    
    /* signal time for dump */
-   if (params[P_CHECKPOINT]) dumpFlag = DUMPPENDING;
+   if (params[P_DUMPMODE] != D_DISABLED && time(NULL) - lastDumpTime > params[P_DUMPINTERVAL]){
+      dumpFlag = DUMPPENDING;
+      time(&lastDumpTime);
+   }
    
    doCompact();
    
@@ -1579,21 +1635,19 @@ static void deepen(){
    printf("\n");
    
    /* Report successful/unsuccessful dump */
-   if (dumpFlag == DUMPSUCCESS)
-   {
+   if (dumpFlag == DUMPSUCCESS) {
       timeStamp();
-       printf("State dumped to %s\n",dumpFile);
-       /*analyse();
-       if (chainWidth)
-           printf("[%d/%d]\n",chainDepth,chainWidth+1);
-       else
-           printf("[%d/-]\n",chainDepth);*/
+      printf("State dumped to %s\n",dumpFile);
+      if (dumpNum == DUMPLIMIT){
+         timeStamp();
+         printf("Sequential dump limit reached.  Changing to overwrite mode.\n");
+      }
    }
-   else if (dumpFlag == DUMPFAILURE)
-   {
+   else if (dumpFlag == DUMPFAILURE) {
       timeStamp();
       printf("State dump unsuccessful\n");
    }
+   dumpFlag = DUMPRESET;
    
    fflush(stdout);
 }
@@ -1639,11 +1693,13 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /* ========================== */
 
 void printHelp(const char *programName){
-   printf("Usage: %s "
+   printf("Usage:    %s "
 #ifndef QSIMPLE
-                    "-v <velocity> "
+                         "-v <velocity> "
 #endif
-                    "-w <width> -s <symmetry> [options...]\n", programName);
+                                        "-w <width> -s <symmetry> [options...]\n"
+          "       or\n"
+          "          %s -l <file> [options...]\n", programName, programName);
    printf("\n");
    printf("qfind is a program that searches for orthogonal spaceships and waves in Life\n"
           "and related cellular automata.  Options are read left to right, with subsequent\n"
@@ -1659,45 +1715,46 @@ void printHelp(const char *programName){
 #endif
    printf("Required (except when loading from a saved state):\n");
 #ifndef QSIMPLE
-   printf("  -v,  --velocity <velocity>    written in the form <translation>c/<period>\n");
+   printf("  -v, --velocity <velocity>     written in the form <translation>c/<period>\n");
 #endif
-   printf("  -w,  --width <number>         logical width (full width depends on symmetry)\n");
-   printf("  -s,  --symmetry <(asymmetric|odd|even|gutter)>  spaceship symmetry type\n");
+   printf("  -w, --width <number>          logical width (full width depends on symmetry)\n");
+   printf("  -s, --symmetry <(asymmetric|odd|even|gutter)>  spaceship symmetry type\n");
    printf("\n");
    printf("Search options:\n");
-   printf("  -r,  --rule <rule>            cellular automaton rule written in Hensel\n"
+   printf("  -r, --rule <rule>             cellular automaton rule written in Hensel\n"
           "                                notation (Default: B3/S23)\n"
           "                                '~' is used to specify a list of forbidden\n"
           "                                conditions.  e.g., -r B3~6c7/S23~8 searches\n"
           "                                in B3/S23 for ships that never contain the B6c,\n"
           "                                B7, or S8 neighborhoods.\n");
-   printf("  -t,  --threads <number>       number of threads during deepening (default: 1)\n");
-   printf("  -f,  --found <number>         maximum number of spaceships to output\n");
-   printf("  -i,  --increment <number>     minimum deepening increment (default: 3)\n");
-   printf("  -g,  --min-extension <number> minimum length of saved extensions\n");
-   printf("  -n,  --first-depth <number>   depth reached during first deepening step\n");
-   printf("  -e,  --extend <filename>      file containing the initial rows for a search\n"
+   printf("  -t, --threads <number>        number of threads during deepening (default: 1)\n");
+   printf("  -f, --found <number>          maximum number of spaceships to output\n");
+   printf("  -i, --increment <number>      minimum deepening increment (default: 3)\n");
+   printf("  -g, --min-extension <number>  minimum length of saved extensions\n");
+   printf("  -n, --first-depth <number>    depth reached during first deepening step\n");
+   printf("  -e, --extend <filename>       file containing the initial rows for a search.\n"
           "                                Use the Golly script get-rows.lua to easily\n"
           "                                generate the initial rows file.\n");
    printf("\n");
    printf("Memory options:\n");
-   printf("  -c,  --cache-mem <number>     allocate N megabytes per thread for lookahead\n"
+   printf("  -c, --cache-mem <number>      allocate N megabytes per thread for lookahead\n"
           "                                cache (default: %d if speed is greater than c/5\n"
           "                                and disabled otherwise)\n"
           "                                Use -c 0 to disable lookahead caching.\n",DEFAULT_CACHEMEM);
-   printf("  -m,  --mem-limit <number>     limits lookup table memory to N megabytes\n");
-   printf("  -q,  --queue-bits <number>    set BFS queue size to 2^N nodes (default: %d)\n", QBITS);
-   printf("  -h,  --hash-bits <number>     set hash table size to 2^N nodes (default: %d)\n"
+   printf("  -m, --mem-limit <number>      limits lookup table memory to N megabytes\n");
+   printf("  -q, --queue-bits <number>     set BFS queue size to 2^N nodes (default: %d)\n", QBITS);
+   printf("  -h, --hash-bits <number>      set hash table size to 2^N nodes (default: %d)\n"
           "                                Use -h 0 to disable duplicate elimination.\n", HASHBITS);
-   printf("  -b,  --base-bits <number>     groups 2^N queue entries to an index node\n"
+   printf("  -b, --base-bits <number>      groups 2^N queue entries to an index node\n"
           "                                (default: 4)\n");
    printf("\n");
    printf("Save/load options:\n");
-   printf("  -d,  --dump <prefix-string>   dump search state after queue compaction to\n"
-          "                                files with the given filename prefix\n");
-   printf("  -l,  --load <filename>        load search state from the given file\n");
-   printf("  -j,  --split <number>         split loaded search state into at most N files\n");
-   printf("  -p,  --preview                preview partial results from the loaded state\n");
+   printf("  -d, --dump-root <string>      dump filename prefix\n");
+   printf("  -a, --dump-interval <number>  wait at least N seconds between dumps\n");
+   printf("      --dump-mode <(overwrite|sequential|disabled)>  set dump mode\n");
+   printf("  -l, --load <filename>         load search state from the given dump file\n");
+   printf("  -j, --split <number>          split loaded search state into at most N files\n");
+   printf("  -p, --preview                 preview partial results from the loaded state\n");
    printf("\n");
    printf("Output options (enabled by default):\n");
 #ifndef QSIMPLE
@@ -1708,19 +1765,19 @@ void printHelp(const char *programName){
           "                                              during deepening step\n");
    printf("  (--enable-longest|--disable-longest)        enable/disable printing longest\n"
           "                                              partial result at end of search\n");
-   
+   printf("\n");
    printf("Wave options:\n");
-   printf("  -o,  --boundary-sym <(disabled|odd|even|gutter)>  boundary symmetry type for\n"
-          "                                                    wave searches\n");
+   printf("  -o, --boundary-sym <(disabled|odd|even|gutter)>  boundary symmetry type for\n"
+          "                                                   wave searches\n");
    printf("\n");
    printf("Documentation options:\n");
    printf("  --help                        print usage instructions and exit\n");
 #ifndef QSIMPLE
    printf("\n");
    printf("Example search:\n"
-          "    %s -v c/5 -w 9 -s even -r B3/S23 -t 2\n"
+          "    %s -v c/5 -w 9 -s even -r B3/S23 -t 2\n\n"
           "  Searches Life (rule B3/S23) for c/5 orthogonal spaceships with even\n"
-          "  bilateral symmetry and logical width 9 (full width 18) using two threads.\n", programName);
+          "  bilateral symmetry and logical width 9 (full width 18) using two threads.\n\n", programName);
 #endif
    exit(0);
 }
@@ -1749,11 +1806,16 @@ void echoParams(){
 #ifndef QSIMPLE
    if (params[P_FULLPERIOD] && gcd(period,offset)>1) printf("Suppress subperiodic results\n");
 #endif
-   if (params[P_CHECKPOINT]) printf("Dump state after queue compaction\n");
+   if (params[P_DUMPMODE] != D_DISABLED){
+      printf("Dump interval: %d second%s\n", params[P_DUMPINTERVAL], params[P_DUMPINTERVAL] == 1 ? "" : "s");
+      printf("Dump mode: %s\n", params[P_DUMPMODE] == D_OVERWRITE ? "overwrite" : "sequential");
+   }
+   else
+      printf("Dump disabled\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
    printf("Minimum deepening increment: %d\n",MINDEEP);
-   if (params[P_PRINTDEEP] == 0)printf("Output disabled while deepening\n");
+   if (params[P_PRINTDEEP] == 0) printf("Output disabled while deepening\n");
 #ifndef NOCACHE
    if (params[P_CACHEMEM])
       printf("Cache memory per thread: %d megabytes\n", params[P_CACHEMEM]);
@@ -2017,6 +2079,12 @@ void checkParams(){
    const char *ruleError;
    
    /* Errors */
+   
+   /* There would probably be several integer overflow bugs if sizeof(int) == 2. */
+   if (sizeof(int) == 2)
+      printError("This program does not work when compiled in 16-bit mode.\n       "
+                 "Please recompile.");
+   
    ruleError = parseRule(rule, nttable);
    
    if (ruleError != 0){
@@ -2140,7 +2208,7 @@ void loadParams() {
    }
    
    /* Load rule */
-   if (fscanf(fp,"%255s\n",loadRule) != 1) loadFail();
+   if (fscanf(fp,"%150s\n",loadRule) != 1) loadFail();
    rule = loadRule;
    
    /* Load dump root */
@@ -2170,6 +2238,9 @@ void loadState(){
    period         = loadInt(fp);
    offset         = loadInt(fp);
    mode           = (Mode)(loadInt(fp));
+   dumpNum        = loadInt(fp);
+   if (params[P_DUMPMODE] == D_SEQUENTIAL)
+      dumpNum = 1;
    
    deepeningAmount = period; /* Currently redundant, since it's recalculated */
    aborting        = 0;
@@ -2299,7 +2370,7 @@ void setDefaultParams(){
    params[P_WIDTH] = 0;
    params[P_SYMMETRY] = SYM_UNDEF;
    params[P_REORDER] = 1;     /* 0 and 2 are also valid values, but this cannot currently be set at runtime. */
-   params[P_CHECKPOINT] = 0;
+   params[P_DUMPINTERVAL] = 1800;    /* 30 minutes */
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
@@ -2317,6 +2388,7 @@ void setDefaultParams(){
    params[P_MINEXTENSION] = 0;
    params[P_FULLPERIOD] = 0;
    params[P_BOUNDARYSYM] = SYM_UNDEF;
+   params[P_DUMPMODE] = D_OVERWRITE;
 }
 
 /* =============== */
@@ -2417,31 +2489,30 @@ const char *parseVelocity(char *velString, int *per, int *off){
    char c = 0;
    if (!strcmp(velString,"c"))
       return 0;
-   else if (sscanf(velString, "c/%d%c%c", per, &b, &c) >= 2){
-      printf("b: %c\n(int)b: %d\n",b,(int)b);
+   else if (sscanf(velString, "c/%d%c%c", per, &b, &c) >= 1){
       if (b == 'd' && !c)
          return "diagonal spaceship searches are not supported.";
-      return "illegal characters after velocity";
+      else if (b == '\0' || (b == 'o' && !c))
+         return 0;
+      else
+         return "illegal characters after velocity";
    }
-   else if (sscanf(velString, "%dc/%d%c%c", off, per, &b, &c) >= 3){
-      if (b == 'd' && !c)
-         return "diagonal spaceship searches are not supported.";
-      return "illegal characters after velocity";
-   }
-   else if (sscanf(velString, "c/%d", per) == 1)
-      return 0;
-   else if (sscanf(velString, "%dc/%d", off, per) == 2){
+   else if (sscanf(velString, "%dc/%d%c%c", off, per, &b, &c) >= 2){
       if (*off == 0)
          return "oscillator searches are not supported.";
+      else if (b == 'd' && !c)
+         return "diagonal spaceship searches are not supported.";
       else if (*off < 0)
          return "offset must be positive.";
-      else
+      else if (b == '\0' || (b == 'o' && !c))
          return 0;
+      else
+         return "illegal characters after velocity";
    }
    else if (sscanf(velString, "(%d,%d)c/%d%c", off, &xoff, per, &c) >= 3){
-      if (c)
+      if (c != '\0' && c != 'o')
          return "illegal characters after velocity";
-      if (xoff != 0) {
+      else if (xoff != 0) {
          if (*off == 0){
             *off = xoff;
             xoff = 0;
@@ -2456,8 +2527,8 @@ const char *parseVelocity(char *velString, int *per, int *off){
          return "oscillator searches are not supported.";
       else if (*off < 0)
          return "offset must be positive.";
-      
-      return 0;
+      else
+         return 0;
    }
    return "Unable to read offset and period.";
 }
@@ -2472,42 +2543,45 @@ void parseOptions(int argc, char *argv[]){
    
    /* list of long options */
    struct option options[] = {
-   // {"",                          no_argument,        -1},   /* end option parsing when "--" encountered */
-      {"help",                      no_argument,       256},
-      {"rule",                      required_argument, 'r'},
-      {"width",                     required_argument, 'w'},
-      {"symmetry",                  required_argument, 's'},
-      {"boundary-sym",              required_argument, 'o'},
-      {"boundary-symmetry",         required_argument, 'o'},
-      {"mem-limit",                 required_argument, 'm'},
-      {"memory-limit",              required_argument, 'm'},
-      {"cache-mem",                 required_argument, 'c'},
-      {"cache-memory",              required_argument, 'c'},
-      {"first-depth",               required_argument, 'n'},
-      {"increment",                 required_argument, 'i'},
-      {"queue-bits",                required_argument, 'q'},
-      {"hash-bits",                 required_argument, 'h'},
-      {"base-bits",                 required_argument, 'b'},
-      {"threads",                   required_argument, 't'},
-      {"found",                     required_argument, 'f'},
-      {"min-extension",             required_argument, 'g'},
-      {"minimum-extension",         required_argument, 'g'},
-      {"extend",                    required_argument, 'e'},
-      {"dump",                      required_argument, 'd'},
-      {"load",                      required_argument, 'l'},
-      {"split",                     required_argument, 'j'},
-      {"preview",                   no_argument,       'p'},
+   // {"",                    no_argument,        -1},   /* end option parsing when "--" encountered */
+      {"help",                no_argument,       256},
+      {"rule",                required_argument, 'r'},
+      {"width",               required_argument, 'w'},
+      {"symmetry",            required_argument, 's'},
+      {"boundary-sym",        required_argument, 'o'},
+      {"boundary-symmetry",   required_argument, 'o'},
+      {"mem-limit",           required_argument, 'm'},
+      {"memory-limit",        required_argument, 'm'},
+      {"cache-mem",           required_argument, 'c'},
+      {"cache-memory",        required_argument, 'c'},
+      {"first-depth",         required_argument, 'n'},
+      {"increment",           required_argument, 'i'},
+      {"queue-bits",          required_argument, 'q'},
+      {"hash-bits",           required_argument, 'h'},
+      {"base-bits",           required_argument, 'b'},
+      {"threads",             required_argument, 't'},
+      {"found",               required_argument, 'f'},
+      {"min-extension",       required_argument, 'g'},
+      {"minimum-extension",   required_argument, 'g'},
+      {"extend",              required_argument, 'e'},
+      {"dump-root",           required_argument, 'd'},
+      {"load",                required_argument, 'l'},
+      {"split",               required_argument, 'j'},
+      {"dump-interval",       required_argument, 'a'},
+      {"dump-int",            required_argument, 'a'},
+      {"preview",             no_argument,       'p'},
 #ifndef QSIMPLE
-      {"velocity",                  required_argument, 'v'},
-      {"enable-subperiod",          no_argument,       257},
-      {"enable-subperiodic",        no_argument,       257},
-      {"disable-subperiod",         no_argument,       258},
-      {"disable-subperiodic",       no_argument,       258},
+      {"velocity",            required_argument, 'v'},
+      {"enable-subperiod",    no_argument,       257},
+      {"enable-subperiodic",  no_argument,       257},
+      {"disable-subperiod",   no_argument,       258},
+      {"disable-subperiodic", no_argument,       258},
 #endif
-      {"enable-deep-print",         no_argument,       259},
-      {"disable-deep-print",        no_argument,       260},
-      {"enable-longest",            no_argument,       261},
-      {"disable-longest",           no_argument,       262},
+      {"enable-deep-print",   no_argument,       259},
+      {"disable-deep-print",  no_argument,       260},
+      {"enable-longest",      no_argument,       261},
+      {"disable-longest",     no_argument,       262},
+      {"dump-mode",           required_argument, 263},
       {0, 0, 0}   /* marks end of long options list */
    };
    
@@ -2517,8 +2591,8 @@ void parseOptions(int argc, char *argv[]){
 #ifndef QSIMPLE
                            "kKv:V:"
 #endif
-                           "b:c:d:e:f:g:h:i:j:l:m:n:o:p:q:r:s:t:w:z"    /* Currently unused: */
-                           "B:C:D:E:F:G:H:I:J:L:M:N:O:P:Q:R:S:T:W:Z",   /* a,u,x,y,A,U,X,Y   */
+                           "a:b:c:d:e:f:g:h:i:j:l:m:n:o:p:q:r:s:t:w:z"    /* Currently unused: */
+                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:P:Q:R:S:T:W:Z",   /* a,u,x,y,A,U,X,Y   */
                            options,
                            &optName,
                            &optArg)) != -1)
@@ -2526,6 +2600,9 @@ void parseOptions(int argc, char *argv[]){
       switch (c) {
          case 'r': case 'R':
             rule = optArg;
+            if(strlen(rule) > 150)  /* any valid rule can be written in 141 characters or fewer */
+               printError("rule string exceeds maximum allowed length (150).\n       "
+                          "You must write the rule more efficiently.\n");
             break;
 #ifndef QSIMPLE
          case 'v': case 'V':
@@ -2634,7 +2711,8 @@ void parseOptions(int argc, char *argv[]){
             break;
          case 'd': case 'D':
             dumpRoot = optArg;
-            params[P_CHECKPOINT] = 1;
+            if (strlen(dumpRoot) > MAXDUMPROOT)
+               printError("dump root exceeds maximum allowed length (" XSTR(MAXDUMPROOT) ")");
             break;
          case 'j': case 'J':
             splitNum = readInt(optName, optArg);
@@ -2649,6 +2727,11 @@ void parseOptions(int argc, char *argv[]){
             loadDumpFlag = 1;
             loadParams();
             break;
+         case 'a': case 'A':
+            params[P_DUMPINTERVAL] = readInt(optName, optArg);
+            if (params[P_DUMPINTERVAL] < 0)
+               printError("dump interval must be nonnegative");
+            break;
          case 259:   /* --enable-deep-printing */
             params[P_PRINTDEEP] = 1;
             break;
@@ -2660,6 +2743,19 @@ void parseOptions(int argc, char *argv[]){
             break;
          case 262:   /* --disable-longest-partial */
             params[P_LONGEST] = 0;
+            break;
+         case 263:   /* --dump-mode */
+            switch(optArg[0]) {
+               case 'o': case 'O':
+                  params[P_DUMPMODE] = D_OVERWRITE; break;
+               case 's': case 'S':
+                  params[P_DUMPMODE] = D_SEQUENTIAL; break;
+               case 'd': case 'D':
+                  params[P_DUMPMODE] = D_DISABLED; break;
+               default:
+                  optError("unrecognized dump mode ", optArg);
+                  break;
+            }
             break;
          case 256:   /* --help */
             printHelp(argv[0]);
@@ -2749,6 +2845,8 @@ void searchSetup(){
       if(params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
    }
    
+   dumpMode = params[P_DUMPMODE];   /* these may need to be different when splitting */
+   
    /* split queue across multiple files */
    if(splitNum > 0){
       node x;
@@ -2756,6 +2854,8 @@ void searchSetup(){
       uint32_t deepIndex;
       int firstDumpNum = 0;
       int totalNodes = 0;
+      
+      dumpMode = D_SEQUENTIAL; 
       
       echoParams();
       printf("\n");
@@ -2855,8 +2955,8 @@ void searchSetup(){
             exit(1);
          }
          
-         if(dumpNum >= 100000){
-            fprintf(stderr, "Error: dump file number limit reached.\n");
+         if(dumpNum >= DUMPLIMIT){
+            fprintf(stderr, "Error: dump file number limit (" XSTR(DUMPLIMIT) ") reached.\n");
             fprintf(stderr, "       Try splitting the queue in a new directory.\n");
             exit(1);
          }
@@ -2917,6 +3017,9 @@ void searchSetup(){
    makeTables();
    
    rephase();
+   
+   parseDumpRoot();
+   time(&lastDumpTime);
    
    timeStamp();
 }
