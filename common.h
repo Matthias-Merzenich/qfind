@@ -1,7 +1,7 @@
 /* This header file contains functions common to both qfind and qfind-s.
 ** Some functions contained in this file work slightly differently depending
 ** on whether qfind or qfind-s is being compiled.  Such differences are
-** determined by the presence of the macro QSIMPLE defined in qfind-s.cpp.
+** determined by the presence of the macro QSIMPLE defined in qfind-s.c.
 */
 
 #include <stdio.h>
@@ -130,12 +130,14 @@ uint32_t deepQHead, deepQTail, oldDeepQHead;
 
 #ifndef NOCACHE
 long long cachesize ;
-struct cacheentry {
+typedef struct {
    uint16_t *p1, *p2, *p3 ;
    int abn, r ;
-} *totalCache ;
+} cacheentry;
 
-struct cacheentry **cache;
+cacheentry *totalCache;
+
+cacheentry **cache;
 #endif
 
 /*
@@ -326,7 +328,7 @@ const char *parseRule(const char *rule, int *tab) {
 }
 
 #ifndef QSIMPLE
-void makePhases();
+void makePhases(void);
 #endif
 
 unsigned char *causesBirth;
@@ -348,7 +350,7 @@ void fasterTable() {
             nttable2[p++] = slowEvolveBit(row1, row2, row3, 0) ;
 }
 
-int evolveBit(int row1, int row2, int row3, int bshift) {
+int evolveBitShift(int row1, int row2, int row3, int bshift) {
    return nttable2[
       (((row1 << 6) >> bshift) & 0700) +
       (((row2 << 3) >> bshift) &  070) +
@@ -379,7 +381,7 @@ int evolveRow(int row1, int row2, int row3){
          return -1;
    }
    if (params[P_SYMMETRY] == SYM_ODD) s = 1;
-   if (params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
+   if (params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBitShift(row1, row2, row3, width - 1)) return -1;
    if (params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
    if (params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
    if (params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
@@ -400,7 +402,7 @@ int evolveRow(int row1, int row2, int row3){
    row4 = evolveBit(row1_s, row2_s, row3_s);
    if (row4 == -1) return -1;
    for (j = 1; j < width; j++){
-      theBit = evolveBit(row1, row2, row3, j - 1);
+      theBit = evolveBitShift(row1, row2, row3, j - 1);
       if (theBit == -1) return -1;
       row4 += theBit << j;
    }
@@ -416,7 +418,7 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
       if (evolveBit(theBit, 0, theBit))
          return -1;
    }
-   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBit(row1, row2, row3, width - 1)) return -1;
+   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBitShift(row1, row2, row3, width - 1)) return -1;
    if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
    if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
       row1 += ((row1 >> (width-1-t)) & 1) << (width);
@@ -424,7 +426,7 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
       row3 += ((row3 >> (width-1-t)) & 1) << (width);
    }
    for(j = width-bits; j < width; j++){
-      theBit = evolveBit(row1, row2, row3, j - 1);
+      theBit = evolveBitShift(row1, row2, row3, j - 1);
       if (theBit == -1)
          return -1;
       row4 += theBit << j;
@@ -457,7 +459,7 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    row4 = evolveBit(row1_s, row2_s, row3_s);
    if (row4 == -1) return -1;
    for(j = 1; j < bits; j++){
-      theBit = evolveBit(row1, row2, row3, j - 1);
+      theBit = evolveBitShift(row1, row2, row3, j - 1);
       if (theBit == -1) return -1;
       row4 += theBit << j;
    }
@@ -493,7 +495,7 @@ uint16_t *getoffset(int row12) {
       r = makeRow(row12 >> width, row12 & ((1 << width) - 1)) ;
    return r ;
 }
-uint16_t *getoffset(int row1, int row2) {
+uint16_t *getoffset2(int row1, int row2) {
    return getoffset((row1 << width) + row2) ;
 }
 
@@ -505,15 +507,15 @@ uint16_t *getoffset(int row1, int row2) {
 /*    XXXX                                                                  */
 /*                                                                          */
 /* as well as the number (n) of such rows.                                  */
-void getoffsetcount(int row1, int row2, int row3, uint16_t* &p, int &n) {
-   uint16_t *theRow = getoffset(row1, row2) ;
-   p = theRow + theRow[row3] ;
-   n = theRow[row3+1] - theRow[row3] ;
+void getoffsetcount(int row1, int row2, int row3, uint16_t** p, int *n) {
+   uint16_t *theRow = getoffset2(row1, row2) ;
+   *p = theRow + theRow[row3] ;
+   *n = theRow[row3+1] - theRow[row3] ;
 }
 
 /* Like getoffsetcount(), but only gives the number of rows.  Currently unused. */
 int getcount(int row1, int row2, int row3) {
-   uint16_t *theRow = getoffset(row1, row2) ;
+   uint16_t *theRow = getoffset2(row1, row2) ;
    return theRow[row3+1] - theRow[row3] ;
 }
 
@@ -1080,7 +1082,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
 }
 
 #ifndef QSIMPLE
-void makeSubperiodTables();
+void makeSubperiodTables(void);
 int subperiodic(node x, row *pRows, int nodeRow, uint32_t lastRow);
 #endif
 
@@ -1554,13 +1556,13 @@ int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
       513 * abn ;
    h = h + (h >> 15) ;
    h &= (cachesize-1) ;
-   struct cacheentry &ce = cache[omp_get_thread_num()][h] ;
-   if (ce.p1 == p1 && ce.p2 == p2 && ce.p3 == p3 && ce.abn == abn)
-      return -2 + ce.r ;
-   ce.p1 = p1 ;
-   ce.p2 = p2 ;
-   ce.p3 = p3 ;
-   ce.abn = abn ;
+   cacheentry *ce = &(cache[omp_get_thread_num()][h]) ;
+   if (ce->p1 == p1 && ce->p2 == p2 && ce->p3 == p3 && ce->abn == abn)
+      return -2 + ce->r ;
+   ce->p1 = p1 ;
+   ce->p2 = p2 ;
+   ce->p3 = p3 ;
+   ce->abn = abn ;
    return h ;
 }
 
@@ -2160,7 +2162,7 @@ void checkParams(){
       fprintf(stderr, "Warning: the wave symmetry settings are equivalent to a spaceship search.\n");
       params[P_SYMMETRY] = params[P_BOUNDARYSYM];
       params[P_BOUNDARYSYM] = SYM_UNDEF;
-      mode = (Mode)params[P_SYMMETRY];
+      mode = (enum Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
    if(params[P_QBITS] > 38 && !aborting){
@@ -2247,7 +2249,7 @@ void loadState(){
    width          = loadInt(fp);
    period         = loadInt(fp);
    offset         = loadInt(fp);
-   mode           = (Mode)(loadInt(fp));
+   mode           = (enum Mode)(loadInt(fp));
    dumpNum        = loadInt(fp);
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
       dumpNum = 1;
@@ -2422,9 +2424,9 @@ struct option {
 **
 ** Differences from getopt_long():
 **   I/O:   char **optName and char **optArg:
-**             passed by reference to save pointers to option names and
-**             arguments.  *optName and *optArg will point to elements
-**             of argv[].  If no argument is provided, *optArg will be 0.
+**             used to save pointers to option names and arguments.
+**             *optName and *optArg will point to elements of argv[].
+**             If no argument is provided, *optArg will be 0.
 */
 int my_getopt( int argc,
                char *argv[],
@@ -3009,9 +3011,9 @@ void searchSetup(){
       printf("Not enough memory to allocate lookahead cache\n");
       exit(1);
    }
-   totalCache = (struct cacheentry *)calloc(sizeof(cacheentry),
+   totalCache = (cacheentry *)calloc(sizeof(cacheentry),
          (cachesize + 5) * params[P_NUMTHREADS]) ;
-   cache = (struct cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
+   cache = (cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
    
    for(int i = 0; i < params[P_NUMTHREADS]; i++)
       cache[i] = totalCache + (cachesize + 5) * i;

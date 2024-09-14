@@ -1,22 +1,22 @@
-qfind v2.3
+qfind v2.4b
 
 qfind is a spaceship search program for Conway's Game of Life and related
 cellular automata written by Matthias Merzenich.  It is based on David
 Eppstein's gfind and zdr's zfind search programs.  Additional code and
-suggestions were provided by Paul Tooke, Tomas Rokicki, praosylen, and
-Adam P. Goucher.
+suggestions were provided by Paul Tooke, Tomas Rokicki, Frank Everdij,
+praosylen, and Adam P. Goucher.
 
 Three scripts are included:
 
-qfind.cpp:
+qfind.c:
    The main search program.  This program uses OpenMP to achieve rather
    basic parallelization.  It should be compiled with the OpenMP flag
    for your compiler.  I use
    
-   g++ qfind.cpp -O3 -fopenmp -march=native -o qfind
+   gcc qfind.c -O3 -fopenmp -march=native -o qfind
 
 
-qfind-s.cpp
+qfind-s.c
    A simplified version of qfind with fewer features that is slightly faster.
    You must change the period and offset of the desired search in the code
    before compiling.  This version only allows gcd(period,offset) = 1.
