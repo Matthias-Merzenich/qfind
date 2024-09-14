@@ -72,7 +72,7 @@
 
 const char *rule = "B3/S23";     /* Default rule set to B3/S23 (Life) */
 char loadRule[151];              /* Used for loading rule from file */
-char trueRule[151];              /* Used in case of forbidden conditions */
+char baseRule[151];              /* Used in case of forbidden conditions */
 
 char *initRows;
 
@@ -1060,7 +1060,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    /* Buffer output */
    patternBuf = (char*)realloc(patternBuf, ((2 * MAXWIDTH + 4) * sxsAllocRows + 300) * sizeof(char));
    
-   sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, trueRule);
+   sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, baseRule);
    
    int theBufRow = -1;
    while(theBufRow++ < nrows){
@@ -2850,6 +2850,17 @@ void searchSetup(){
    makeSubperiodTables();
 #endif
    
+   /* Generate proper rule string for printing patterns */
+   int i;
+   int j = 0;
+   int k = 1;
+   for (i = 0; i < 151 && rule[i] != '\0'; i++){
+      if (rule[i] == '~') k = 0;
+      else if (rule[i] == '/') k = 1;
+      if(k) baseRule[j++] = rule[i];
+   }
+   baseRule[j] = '\0';
+   
    if(previewFlag){
       params[P_NUMSHIPS] = 0;
       preview();
@@ -3018,17 +3029,6 @@ void searchSetup(){
    for(int i = 0; i < params[P_NUMTHREADS]; i++)
       cache[i] = totalCache + (cachesize + 5) * i;
 #endif
-   
-   /* Generate proper rule string for printing patterns */
-   int i;
-   int j = 0;
-   int k = 1;
-   for (i = 0; i < 256 && rule[i] != '\0'; i++){
-      if (rule[i] == '~') k = 0;
-      else if (rule[i] == '/') k = 1;
-      if(k) trueRule[j++] = rule[i];
-   }
-   trueRule[j] = '\0';
    
    echoParams();
    
