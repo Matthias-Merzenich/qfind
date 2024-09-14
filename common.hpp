@@ -8,8 +8,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <omp.h>
 #include <time.h>
+
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num() 0
+#define omp_set_num_threads(x)
+#endif
 
 #ifdef QSIMPLE
    #define WHICHPROGRAM qfind-simple
@@ -1727,7 +1733,9 @@ void printHelp(const char *programName){
           "                                conditions.  e.g., -r B3~6c7/S23~8 searches\n"
           "                                in B3/S23 for ships that never contain the B6c,\n"
           "                                B7, or S8 neighborhoods.\n");
+#ifdef _OPENMP
    printf("  -t, --threads <number>        number of threads during deepening (default: 1)\n");
+#endif
    printf("  -f, --found <number>          maximum number of spaceships to output\n");
    printf("  -i, --increment <number>      minimum deepening increment (default: 3)\n");
    printf("  -g, --min-extension <number>  minimum length of saved extensions\n");
@@ -1823,7 +1831,9 @@ void echoParams(){
       printf("Lookahead caching disabled\n");
 #endif
    if (params[P_MEMLIMIT] >= 0) printf("Memory limit: %d megabytes\n",params[P_MEMLIMIT]);
+#ifdef _OPENMP
    printf("Number of threads: %d\n",params[P_NUMTHREADS]);
+#endif
    if (params[P_MINEXTENSION]) printf("Save depth-first extensions of length at least %d\n",params[P_MINEXTENSION]);
    if (params[P_LONGEST] == 0) printf("Printing of longest partial result disabled\n");
    printf("\n");
@@ -2559,7 +2569,9 @@ void parseOptions(int argc, char *argv[]){
       {"queue-bits",          required_argument, 'q'},
       {"hash-bits",           required_argument, 'h'},
       {"base-bits",           required_argument, 'b'},
+#ifdef _OPENMP
       {"threads",             required_argument, 't'},
+#endif
       {"found",               required_argument, 'f'},
       {"min-extension",       required_argument, 'g'},
       {"minimum-extension",   required_argument, 'g'},
@@ -2591,8 +2603,11 @@ void parseOptions(int argc, char *argv[]){
 #ifndef QSIMPLE
                            "kKv:V:"
 #endif
-                           "a:b:c:d:e:f:g:h:i:j:l:m:n:o:p:q:r:s:t:w:z"    /* Currently unused: */
-                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:P:Q:R:S:T:W:Z",   /* a,u,x,y,A,U,X,Y   */
+#ifdef _OPENMP
+                           "t:T:"
+#endif
+                           "a:b:c:d:e:f:g:h:i:j:l:m:n:o:pq:r:s:w:z"     /* Currently unused: */
+                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:Z",    /* a,u,x,y,A,U,X,Y   */
                            options,
                            &optName,
                            &optArg)) != -1)
@@ -2694,9 +2709,11 @@ void parseOptions(int argc, char *argv[]){
          case 'b': case 'B':
             params[P_BASEBITS] = readInt(optName, optArg);
             break;
+#ifdef _OPENMP
          case 't': case 'T':
             params[P_NUMTHREADS] = readInt(optName, optArg);
             break;
+#endif
          case 'f': case 'F':
             params[P_NUMSHIPS] = readInt(optName, optArg);
             break;
