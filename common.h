@@ -7,14 +7,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <time.h>
 
 #ifdef _OPENMP
-#include <omp.h>
+   #include <omp.h>
 #else
-#define omp_get_thread_num() 0
-#define omp_set_num_threads(x)
+   #define omp_get_thread_num() 0
+   #define omp_set_num_threads(x)
 #endif
 
 #ifdef QSIMPLE
@@ -104,10 +104,10 @@ int gutterSkew = 0;     /* number of cells to skew halves in gutter symmetric se
 
 /* the big data structures */
 #define qBits params[P_QBITS]
-#define QSIZE (1LLU<<qBits)
+#define QSIZE (1LU<<qBits)
 
 #define hashBits params[P_HASHBITS]
-#define HASHSIZE (1LLU<<hashBits)
+#define HASHSIZE (1LU<<hashBits)
 #define HASHMASK (HASHSIZE - 1)
 
 typedef uint32_t node;
@@ -1169,7 +1169,7 @@ static inline int qIsEmpty() {
 
 void qFull() {
     if (aborting != 2) {
-      printf("Exceeded %llu node limit, search aborted\n", QSIZE);
+      printf("Exceeded %lu node limit, search aborted\n", QSIZE);
       fflush(stdout);
       aborting = 2;
    }
@@ -1322,15 +1322,15 @@ void dumpState() {
       fprintf(fp,"1\n");
    else
       fprintf(fp,"%d\n",dumpNum%2);
-   fprintf(fp,"%u\n",qHead-qStart);
-   fprintf(fp,"%u\n",qEnd-qStart);
+   fprintf(fp,"%"PRIu32"\n",qHead-qStart);
+   fprintf(fp,"%"PRIu32"\n",qEnd-qStart);
    for (i = qStart; i < qEnd; ++i)
-      fprintf(fp,"%u\n",rows[i]);
+      fprintf(fp,"%"PRIu16"\n",rows[i]);
    for (i = 0; i < QSIZE; ++i){
       if (deepRowIndices[i]){
          if (deepRowIndices[i] > 1){
             for (j = 0; j < deepRows[deepRowIndices[i]][0] + 1LU + 2LU; ++j){
-               fprintf(fp,"%u\n",deepRows[deepRowIndices[i]][j]);
+               fprintf(fp,"%"PRIu16"\n",deepRows[deepRowIndices[i]][j]);
             }
          }
          else {
@@ -1354,7 +1354,7 @@ void dumpState() {
 /*  Compaction of nearly full queue  */
 /* ================================= */
 
-void putnum(long n) {
+void putnum(long unsigned n) {
    char suffix;
    if (n >= 1000000) {
       n /= 100000;
@@ -1363,12 +1363,12 @@ void putnum(long n) {
       n /= 100;
       suffix = 'k';
    } else {
-      printf("%ld", n);
+      printf("%lu", n);
       return;
    }
 
-   if (n >= 100) printf("%ld", n/10);
-   else printf("%ld.%ld", n/10, n%10);
+   if (n >= 100) printf("%lu", n/10);
+   else printf("%lu.%lu", n/10, n%10);
    putchar(suffix);
 }
 
@@ -1732,9 +1732,9 @@ void printHelp(const char *programName){
    printf("  -r, --rule <rule>             cellular automaton rule written in Hensel\n"
           "                                notation (Default: B3/S23)\n"
           "                                '~' is used to specify a list of forbidden\n"
-          "                                conditions.  e.g., -r B3~6c7/S23~8 searches\n"
-          "                                in B3/S23 for ships that never contain the B6c,\n"
-          "                                B7, or S8 neighborhoods.\n");
+          "                                conditions.  For example, -r B3~6c7/S23~8\n"
+          "                                searches in B3/S23 for ships that never contain\n"
+          "                                the B6c, B7, or S8 neighborhoods.\n");
 #ifdef _OPENMP
    printf("  -t, --threads <number>        number of threads during deepening (default: 1)\n");
 #endif
@@ -2165,17 +2165,17 @@ void checkParams(){
       mode = (enum Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
-   if(params[P_QBITS] > 38 && !aborting){
-      fprintf(stderr, "Warning: queue bits (-q) reduced to 38.\n");
-      params[P_QBITS] = 38;      /* corresponds to a queue size of 550GB */
+   if(params[P_QBITS] > 31 && !aborting){
+      fprintf(stderr, "Warning: queue bits (-q) reduced to 31.\n");
+      params[P_QBITS] = 31;      /* corresponds to a queue size of 2GB */
       if(params[P_BASEBITS] > params[P_QBITS]){
-         fprintf(stderr, "Warning: base bits (-q) reduced to 36.\n");
-         params[P_BASEBITS] = 36;
+         fprintf(stderr, "Warning: base bits (-q) reduced to 30.\n");
+         params[P_BASEBITS] = 30;
       }
    }
-   if(params[P_HASHBITS] > 36 && !aborting){
-      fprintf(stderr, "Warning: hash bits (-h) reduced to 38.\n");
-      params[P_HASHBITS] = 36;   /* corresponds to a hash table size of 550GB */
+   if(params[P_HASHBITS] > 31 && !aborting){
+      fprintf(stderr, "Warning: hash bits (-h) reduced to 31.\n");
+      params[P_HASHBITS] = 31;   /* corresponds to a hash table size of 2GB */
    }
    
 }
@@ -2199,9 +2199,9 @@ signed int loadInt(FILE *fp){
    return v;
 }
 
-unsigned int loadUInt(FILE *fp){
-   unsigned int v;
-   if (fscanf(fp,"%u\n",&v) != 1) loadFail();
+unsigned long loadUInt(FILE *fp){
+   unsigned long v;
+   if (fscanf(fp,"%lu\n",&v) != 1) loadFail();
    return v;
 }
 
@@ -2234,7 +2234,8 @@ void loadParams() {
 
 void loadState(){
    FILE * fp;
-   uint32_t i, j;
+   unsigned long i, j;
+   int k;
    
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
@@ -2275,8 +2276,8 @@ void loadState(){
    }
    
    /* Load up BFS queue */
-   qHead  = loadUInt(fp);
-   qEnd   = loadUInt(fp);
+   qHead  = (node) loadUInt(fp);
+   qEnd   = (node) loadUInt(fp);
    qStart = QSIZE - qEnd;
    qEnd   = QSIZE;
    qHead += qStart;
@@ -2303,7 +2304,9 @@ void loadState(){
    uint32_t theDeepIndex = 2;
    deepQTail = 0;
    
-   while (fscanf(fp,"%u\n",&j) != EOF){
+   while ( (k = fscanf(fp,"%lu\n",&j)) != EOF){
+      if (k == 0)
+         loadFail();
       if (j == 0){
          j = loadUInt(fp);
          for (i = 0; i < j; ++i){
@@ -2315,7 +2318,7 @@ void loadState(){
       deepRows[theDeepIndex] = (row*)calloc( j + 1 + 2, sizeof(**deepRows));
       deepRows[theDeepIndex][0] = j;
       for (i = 1; i < j + 1 + 2; ++i){
-         deepRows[theDeepIndex][i] = loadUInt(fp);
+         deepRows[theDeepIndex][i] = (row) loadUInt(fp);
       }
       deepRowIndices[deepQTail] = theDeepIndex;
       ++theDeepIndex;
@@ -2419,7 +2422,7 @@ struct option {
 
 /* Nonstandard getopt_long():
 ** This is a simple implementation of a getopt-like function.
-** It's missing several features that ordinary getopt_long() has,
+** It's missing some features that ordinary getopt_long() has,
 ** but it has mostly the same input and output.
 **
 ** Differences from getopt_long():
@@ -2427,6 +2430,8 @@ struct option {
 **             used to save pointers to option names and arguments.
 **             *optName and *optArg will point to elements of argv[].
 **             If no argument is provided, *optArg will be 0.
+**             If my_getopt() returns -1, then *optName and *optArg
+**             will be unchanged.
 */
 int my_getopt( int argc,
                char *argv[],
@@ -2437,20 +2442,19 @@ int my_getopt( int argc,
 {
    static int i = 0;
    const char *charInd;
-   *optArg = NULL;
    if (++i == argc)  /* we're at the end of argv */
       return -1;
    *optName = argv[i];
+   *optArg  = NULL;
    if (argv[i][0] == '-'){
       if (argv[i][1] == '\0')
          return '?';
-      /* check if short option is contained in short option list */
+      /* check if short option is contained in short options list */
       else if (argv[i][1] != '-' && argv[i][2] == '\0' && (charInd = strchr(shortOpts, argv[i][1]))){
          if (*(charInd+1) == ':'){
             if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
-               if (*(charInd+2) == ':')
-                  return (int)argv[i][1];
-               return (shortOpts[0] == ':' ? ':' : '?');
+               if (*(charInd+2) != ':')
+                  return (shortOpts[0] == ':' ? ':' : '?');
             }
             else{
                *optArg = argv[++i];
@@ -2459,16 +2463,15 @@ int my_getopt( int argc,
          }
          return (int)argv[i][1];
       }
-      /* check if long option is contained in long option list */
+      /* check if long option is contained in long options list */
       else if (argv[i][1] == '-') {
          while (longOpts->name != 0 && strcmp(argv[i] + 2, longOpts->name)) 
             longOpts++;
          if (longOpts->name){
             if (longOpts->has_arg){
                if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
-                  if (longOpts->has_arg == optional_argument)
-                     return longOpts->val;
-                  return (shortOpts[0] == ':' ? ':' : '?');
+                  if (longOpts->has_arg != optional_argument)
+                     return (shortOpts[0] == ':' ? ':' : '?');
                }
                else
                   *optArg = argv[++i];
@@ -2481,12 +2484,10 @@ int my_getopt( int argc,
 }
 
 int readInt(char *opt, char *arg){
-   int c;
-   if (arg == 0){
+   int c = 0;
+   if (arg == 0)
       aborting = 1;
-      return 0;
-   }
-   if (!sscanf(arg, "%d", &c)){
+   else if (!sscanf(arg, "%d", &c)){
       fprintf(stderr, "Error: invalid argument %s in option %s.\n", arg, opt);
       aborting = 1;
    }
