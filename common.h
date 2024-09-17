@@ -117,9 +117,9 @@ row * rows;
 node * base;
 node * hash;
 
-int nttable[512] ;
-uint16_t **gInd3 ;
-uint32_t *gcount ;
+int nttable[512];
+uint16_t **gInd3;
+uint32_t *gcount;
 uint16_t *gRows;
 long long memusage = 0;
 long long memlimit = 0;
@@ -129,10 +129,10 @@ uint32_t *deepRowIndices;
 uint32_t deepQHead, deepQTail, oldDeepQHead;
 
 #ifndef NOCACHE
-long long cachesize ;
+long long cachesize;
 typedef struct {
-   uint16_t *p1, *p2, *p3 ;
-   int abn, r ;
+   uint16_t *p1, *p2, *p3;
+   int abn, r;
 } cacheentry;
 
 cacheentry *totalCache;
@@ -140,8 +140,7 @@ cacheentry *totalCache;
 cacheentry **cache;
 #endif
 
-/*
-** Representation of vertices.
+/* Representation of vertices.
 **
 ** Each vertex is represented by an entry in the rows[] array.
 ** That entry consists of the bits of the last row of the vertex's pattern
@@ -235,69 +234,69 @@ const char *rulekeys[] = {
    "3a", "4a", "4r", "5i", "4q", "5j", "5q", "6a",
    "4r", "5n", "5c", "6c", "5q", "6k", "6n", "7c",
    "4a", "5a", "5n", "6a", "5j", "6e", "6k", "7e",
-   "5i", "6a", "6c", "7c", "6a", "7e", "7c", "8" } ;
-/*
- *   Parses the rule.  If there's an error, return a string describing the
- *   error.  Fills in the 512-element array pointed to by tab.
- */
+   "5i", "6a", "6c", "7c", "6a", "7e", "7c", "8" };
+
+/*   Parses the rule.  If there's an error, return a string describing the error.
+**   Fills in the 512-element array pointed to by tab.
+*/
 const char *parseRule(const char *rule, int *tab) {
-   const char *p = rule ;
+   const char *p = rule;
    int tempTab[256];    /* needed to keep track of values when setting forbidden conditions */
    for (int i=0; i<512; i++)
-      tab[i] = 0 ;
+      tab[i] = 0;
    for (int bs=0; bs<512; bs += 256) {
       if (bs == 0) {
          if (*p != 'B' && *p != 'b')
-            return "Expected B at start of rule" ;
+            return "Expected B at start of rule";
       } else {
          if (*p != 'S' && *p != 's')
-            return "Expected S after slash" ;
+            return "Expected S after slash";
       }
-      p++ ;
-      int allowed = 1 ;
+      p++;
+      int allowed = 1;
       while (*p != '/' && *p != '\0') {
          if (*p == '~'){
-            p++ ;
+            p++;
             if (allowed == -1 || *p == '~'){
                if (bs)
-                  return "Can't have multiple tildes in survival conditions" ;
+                  return "Can't have multiple tildes in survival conditions";
                else
-                  return "Can't have multiple tildes in birth conditions" ;
+                  return "Can't have multiple tildes in birth conditions";
             }
             if (*p == '/' || *p == '\0')
-               continue ;
-            allowed = -1 ;  /* table entry will be -1 if condition is forbidden */
+               continue;
+            allowed = -1;  /* table entry will be -1 if condition is forbidden */
          }
          if (!('0' <= *p && *p <= '9'))
-            return "Missing number in rule" ;
+            return "Missing number in rule";
          if (*p == '9')
-            return "Unexpected character in rule" ;
-         char dig = *p++ ;
-         int neg = 0 ;
+            return "Unexpected character in rule";
+         char dig = *p++;
+         int neg = 0;
          if (*p == '/' || *p == '\0' || (*p == '-' && allowed == 1) || *p == '~' || ('0' <= *p && *p <= '8'))
             for (int i=0; i<256; i++)
                if (rulekeys[i][0] == dig)
-                  tab[bs+i] = 1*allowed ;
+                  tab[bs+i] = 1*allowed;
          int forbiddenCount = 0;
          if (*p == '-'){
             neg = 1;
             for (int i=0; i<256; i++)
-               tempTab[i] = 0 ;
+               tempTab[i] = 0;
             p++;
          }
          for (; *p != '/' && *p != '\0' && *p != '~' && !('0' <= *p && *p <= '8'); p++) {
             if (*p == '-')
-               return "Improperly placed negation sign" ;
+               return "Improperly placed negation sign";
             if ('a' <= *p && *p <= 'z') {
-               int used = 0 ;
+               int used = 0;
                for (int i=0; i<256; i++){
                   if (rulekeys[i][0] == dig){
                      if (rulekeys[i][1] == *p){
                         if (allowed == 1)
-                           tab[bs+i] = (1-neg) ;
+                           tab[bs+i] = (1-neg);
                         else if (!neg)
-                           tab[bs+i] = -1 ;
-                        used++ ;
+                           tab[bs+i] = -1;
+                        used++;
                      }
                      else if (neg && allowed == -1)
                         tempTab[i]++;
@@ -306,25 +305,25 @@ const char *parseRule(const char *rule, int *tab) {
                if (neg && allowed == -1)
                   forbiddenCount++;
                if (!used)
-                  return "Unexpected character in rule" ;
+                  return "Unexpected character in rule";
             }
             else
-               return "Unexpected character in rule" ;
+               return "Unexpected character in rule";
          }
          if (neg && allowed == -1)
             for (int i=0; i<256; i++)
                if (tempTab[i] == forbiddenCount)
-                  tab[bs+i] = -1 ;
+                  tab[bs+i] = -1;
       }
       if (bs == 0) {
          if (*p++ != '/')
-            return "Missing expected slash between B and S" ;
+            return "Missing expected slash between B and S";
       } else {
          if (*p++ != 0)
-            return "Extra unparsed junk at end of rule string" ;
+            return "Extra unparsed junk at end of rule string";
       }
    }
-   return 0 ;
+   return 0;
 }
 
 #ifndef QSIMPLE
@@ -333,9 +332,9 @@ void makePhases(void);
 
 unsigned char *causesBirth;
 
-char nttable2[512] ;
+char nttable2[512];
 
-int slowEvolveBit(int row1, int row2, int row3, int bshift){
+int slowEvolveBit(int row1, int row2, int row3, int bshift) {
    return nttable[(((row2>>bshift) & 2)<<7) | (((row1>>bshift) & 2)<<6)
                 | (((row1>>bshift) & 4)<<4) | (((row2>>bshift) & 4)<<3)
                 | (((row3>>bshift) & 7)<<2) | (((row2>>bshift) & 1)<<1)
@@ -343,28 +342,28 @@ int slowEvolveBit(int row1, int row2, int row3, int bshift){
 }
 
 void fasterTable() {
-   int p = 0 ;
+   int p = 0;
    for (int row1=0; row1<8; row1++)
       for (int row2=0; row2<8; row2++)
          for (int row3=0; row3<8; row3++)
-            nttable2[p++] = slowEvolveBit(row1, row2, row3, 0) ;
+            nttable2[p++] = slowEvolveBit(row1, row2, row3, 0);
 }
 
 int evolveBitShift(int row1, int row2, int row3, int bshift) {
    return nttable2[
       (((row1 << 6) >> bshift) & 0700) +
       (((row2 << 3) >> bshift) &  070) +
-      (( row3       >> bshift) &   07)] ;
+      (( row3       >> bshift) &   07)];
 }
 
 int evolveBit(int row1, int row2, int row3) {
    return nttable2[
       ((row1 << 6) & 0700) +
       ((row2 << 3) &  070) +
-      ( row3       &   07)] ;
+      ( row3       &   07)];
 }
 
-int evolveRow(int row1, int row2, int row3){
+int evolveRow(int row1, int row2, int row3) {
    int row4;
    int row1_s,row2_s,row3_s;
    int j,s = 0;
@@ -409,7 +408,7 @@ int evolveRow(int row1, int row2, int row3){
    return row4;
 }
 
-int evolveRowHigh(int row1, int row2, int row3, int bits){
+int evolveRowHigh(int row1, int row2, int row3, int bits) {
    int row4=0;
    int j,t = 0;
    int theBit;
@@ -418,14 +417,14 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
       if (evolveBit(theBit, 0, theBit))
          return -1;
    }
-   if(params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBitShift(row1, row2, row3, width - 1)) return -1;
-   if(params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
-   if(params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
+   if (params[P_BOUNDARYSYM] == SYM_UNDEF && evolveBitShift(row1, row2, row3, width - 1)) return -1;
+   if (params[P_BOUNDARYSYM] == SYM_ODD) t = 1;
+   if (params[P_BOUNDARYSYM] == SYM_ODD || params[P_BOUNDARYSYM] == SYM_EVEN){
       row1 += ((row1 >> (width-1-t)) & 1) << (width);
       row2 += ((row2 >> (width-1-t)) & 1) << (width);
       row3 += ((row3 >> (width-1-t)) & 1) << (width);
    }
-   for(j = width-bits; j < width; j++){
+   for (j = width-bits; j < width; j++){
       theBit = evolveBitShift(row1, row2, row3, j - 1);
       if (theBit == -1)
          return -1;
@@ -434,7 +433,7 @@ int evolveRowHigh(int row1, int row2, int row3, int bits){
    return row4;
 }
 
-int evolveRowLow(int row1, int row2, int row3, int bits){
+int evolveRowLow(int row1, int row2, int row3, int bits) {
    int row4;
    int row1_s,row2_s,row3_s;
    int j,s = 0;
@@ -444,9 +443,9 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
       if (evolveBit(theBit, 0, theBit))
          return -1;
    }
-   if(params[P_SYMMETRY] == SYM_ODD) s = 1;
-   if(params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
-   if(params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
+   if (params[P_SYMMETRY] == SYM_ODD) s = 1;
+   if (params[P_SYMMETRY] == SYM_ASYM && evolveBit(row1 << 2, row2 << 2, row3 << 2)) return -1;
+   if (params[P_SYMMETRY] == SYM_ODD || params[P_SYMMETRY] == SYM_EVEN){
       row1_s = (row1 << 1) + ((row1 >> s) & 1);
       row2_s = (row2 << 1) + ((row2 >> s) & 1);
       row3_s = (row3 << 1) + ((row3 >> s) & 1);
@@ -458,7 +457,7 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    }
    row4 = evolveBit(row1_s, row2_s, row3_s);
    if (row4 == -1) return -1;
-   for(j = 1; j < bits; j++){
+   for (j = 1; j < bits; j++){
       theBit = evolveBitShift(row1, row2, row3, j - 1);
       if (theBit == -1) return -1;
       row4 += theBit << j;
@@ -466,18 +465,20 @@ int evolveRowLow(int row1, int row2, int row3, int bits){
    return row4;
 }
 
-/* sortRows() is used to sort the global array valorder. This array    */
-/* determines the order in which new rows are added in the search. The */
-/* idea is that certain search orders give slightly quicker solutions  */
-/* during depthFirst() and LookAhead() than the naive order.           */
+/* sortRows() is used to sort the global array valorder. 
+** This array determines the order in which new rows are 
+** added in the search.  The idea is that certain search
+** orders give slightly quicker solutions during depthFirst()
+** and LookAhead() than the naive order.
+*/
 void sortRows(uint16_t *theRow, uint32_t totalRows) {
    uint32_t i;
    int64_t j;
    uint16_t t;
-   for(i = 1; i < totalRows; ++i){
+   for (i = 1; i < totalRows; ++i){
       t = theRow[i];
       j = i - 1;
-      while(j >= 0 && gcount[theRow[j]] < gcount[t]){
+      while (j >= 0 && gcount[theRow[j]] < gcount[t]){
          theRow[j+1] = theRow[j];
          --j;
       }
@@ -485,147 +486,148 @@ void sortRows(uint16_t *theRow, uint32_t totalRows) {
    }
 }
 
-uint16_t *makeRow(int row1, int row2) ;
+uint16_t *makeRow(int row1, int row2);
 
 /* getoffset() returns a pointer to a lookup table where further information */
 /* is found.  It is used in getoffsetcount() and in lookAhead().             */
 uint16_t *getoffset(int row12) {
-   uint16_t *r = gInd3[row12] ;
+   uint16_t *r = gInd3[row12];
    if (r == 0)
-      r = makeRow(row12 >> width, row12 & ((1 << width) - 1)) ;
-   return r ;
+      r = makeRow(row12 >> width, row12 & ((1 << width) - 1));
+   return r;
 }
 uint16_t *getoffset2(int row1, int row2) {
-   return getoffset((row1 << width) + row2) ;
+   return getoffset((row1 << width) + row2);
 }
 
-/* Given rows row1, row2, and row3, getoffsetcount() gives the location (p) */
-/* in the lookup table containing rows XXXX such that                       */
-/*                                                                          */
-/*    row1   evolves into                                                   */
-/*    row2 ----------------> row3                                           */
-/*    XXXX                                                                  */
-/*                                                                          */
-/* as well as the number (n) of such rows.                                  */
+/* Given rows row1, row2, and row3, getoffsetcount() gives the     *\
+** location (p) in the lookup table containing rows XXXX such that **
+**                                                                 **
+**    row1   evolves into                                          **
+**    row2 ----------------> row3                                  **
+**    XXXX                                                         **
+**                                                                 **
+\* as well as the number (n) of such rows.                         */
 void getoffsetcount(int row1, int row2, int row3, uint16_t** p, int *n) {
-   uint16_t *theRow = getoffset2(row1, row2) ;
-   *p = theRow + theRow[row3] ;
-   *n = theRow[row3+1] - theRow[row3] ;
+   uint16_t *theRow = getoffset2(row1, row2);
+   *p = theRow + theRow[row3];
+   *n = theRow[row3+1] - theRow[row3];
 }
 
 /* Like getoffsetcount(), but only gives the number of rows.  Currently unused. */
 int getcount(int row1, int row2, int row3) {
-   uint16_t *theRow = getoffset2(row1, row2) ;
-   return theRow[row3+1] - theRow[row3] ;
+   uint16_t *theRow = getoffset2(row1, row2);
+   return theRow[row3+1] - theRow[row3];
 }
 
-int *gWorkConcat ;      /* gWorkConcat to be parceled out between threads */
-int *rowHash ;
-uint16_t *valorder ;
-void genStatCounts() ;
+int *gWorkConcat;       /* gWorkConcat to be parceled out between threads */
+int *rowHash;
+uint16_t *valorder;
+void genStatCounts();
 
 void makeTables() {
    causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth)<<width);
-   gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2))) ;
-   rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2))) ;
+   gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2)));
+   rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2)));
    for (int i=0; i<1<<(2*width); i++)
-      gInd3[i] = 0 ;
+      gInd3[i] = 0;
    for (int i=0; i<2<<(2*width); i++)
-      rowHash[i] = -1 ;
+      rowHash[i] = -1;
    gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
-   memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2) ;
+   memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2);
    uint32_t i;
-   for(i = 0; i < 1LLU << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
-   for(i = 0; i < 1LLU << width; ++i) gcount[i] = 0 ;
+   for (i = 0; i < 1LLU << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
+   for (i = 0; i < 1LLU << width; ++i) gcount[i] = 0;
    gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
    if (params[P_REORDER] == 1)
-      genStatCounts() ;
+      genStatCounts();
    if (params[P_REORDER] == 2)   /* this option currently cannot be set at runtime */
       for (int i=1; i<1<<width; i++)
-         gcount[i] = 1 + gcount[i & (i - 1)] ;
+         gcount[i] = 1 + gcount[i & (i - 1)];
    gcount[0] = 0xffffffff;    /* Maximum value so empty row is chosen first */
-   valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width) ;
+   valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width);
    for (int i=0; i<1<<width; i++)
-      valorder[i] = (1<<width)-1-i ;
+      valorder[i] = (1<<width)-1-i;
    if (params[P_REORDER] != 0)
-      sortRows(valorder, 1<<width) ;
+      sortRows(valorder, 1<<width);
    for (int row2=0; row2<1<<width; row2++)
-      makeRow(0, row2) ;
+      makeRow(0, row2);
 }
 
-uint16_t *bbuf ;
-long long int bbuf_left = 0 ;
+uint16_t *bbuf;
+long long int bbuf_left = 0;
 
 /* reduce fragmentation by allocating chunks larger */
 /* than needed and parceling out the small pieces.  */
 uint16_t *bmalloc(int siz) {
    if (siz + (1<<width) > bbuf_left) {
-      bbuf_left = (1LL << (2 * width)) + (1LL<<width) ;
-      memusage += 2*bbuf_left ;
+      bbuf_left = (1LL << (2 * width)) + (1LL<<width);
+      memusage += 2*bbuf_left;
       if (params[P_MEMLIMIT] >= 0 && memusage > memlimit) {
-         printf("Aborting due to excessive memory usage\n") ;
-         exit(1) ;
+         printf("Aborting due to excessive memory usage\n");
+         exit(1);
       }
-      bbuf = (uint16_t *)calloc(sizeof(uint16_t), bbuf_left) ;
+      bbuf = (uint16_t *)calloc(sizeof(uint16_t), bbuf_left);
    }
-   uint16_t *r = bbuf ;
-   bbuf += siz ;
-   bbuf_left -= siz ;
-   return r ;
+   uint16_t *r = bbuf;
+   bbuf += siz;
+   bbuf_left -= siz;
+   return r;
 }
 
 void unbmalloc(int siz) {
-   bbuf -= siz ;
-   bbuf_left += siz ;
+   bbuf -= siz;
+   bbuf_left += siz;
 }
 
 /* hashRow() is used to identify if we've already */
 /* built an identical part of the lookup table.   */
 unsigned int hashRow(uint16_t *theRow, int siz) {
-   unsigned int h = 0 ;
+   unsigned int h = 0;
    for (int i=0; i<siz; i++)
-      h = h * 3 + theRow[i] ;
-   return h ;
+      h = h * 3 + theRow[i];
+   return h;
 }
 
 uint16_t *makeRow(int row1, int row2) {
-   int good = 0 ;
+   int good = 0;
    /* Set up gWork for this particular thread */
    int *gWork = gWorkConcat + ((3LL * omp_get_thread_num()) << width);
-   int *gWork2 = gWork + (1 << width) ;
-   int *gWork3 = gWork2 + (1 << width) ;
-   /* For each row3, find all row4 such that   */
-   /*                                          */
-   /*      row1   evolves into                 */
-   /*      row2 ----------------> row4         */
-   /*      row3                                */
-   /*                                          */
-   /* list of row4s is stored in gwork and     */
-   /* corresponding row3s are stored in gwork2 */
+   int *gWork2 = gWork + (1 << width);
+   int *gWork3 = gWork2 + (1 << width);
+   
+   /* For each row3, find all row4 such that   *\
+   **                                          **
+   **      row1   evolves into                 **
+   **      row2 ----------------> row4         **
+   **      row3                                **
+   **                                          **
+   ** list of row4s is stored in gwork and     **
+   \* corresponding row3s are stored in gwork2 */
    if (width < 4) {
       for (int row3=0; row3<1<<width; row3++)
-         gWork3[row3] = evolveRow(row1, row2, row3) ;
+         gWork3[row3] = evolveRow(row1, row2, row3);
    } else {
-      int lowbitcount = (width >> 1) + 1 ;
-      int hibitcount = ((width + 1) >> 1) + 1 ;
-      int hishift = lowbitcount - 2 ;
-      int lowcount = 1 << lowbitcount ;
+      int lowbitcount = (width >> 1) + 1;
+      int hibitcount = ((width + 1) >> 1) + 1;
+      int hishift = lowbitcount - 2;
+      int lowcount = 1 << lowbitcount;
       for (int row3=0; row3<1<<lowbitcount; row3++)
-         gWork2[row3] = evolveRowLow(row1, row2, row3, lowbitcount-1) ;
+         gWork2[row3] = evolveRowLow(row1, row2, row3, lowbitcount-1);
       for (int row3=0; row3<1<<width; row3 += 1<<hishift)
          gWork2[lowcount+(row3>>hishift)] =
-                        evolveRowHigh(row1, row2, row3, hibitcount-1) ;
+                        evolveRowHigh(row1, row2, row3, hibitcount-1);
       for (int row3=0; row3<1<<width; row3++)
          gWork3[row3] = gWork2[row3 & ((1<<lowbitcount) - 1)] |
-                        gWork2[lowcount+(row3 >> hishift)] ;
+                        gWork2[lowcount+(row3 >> hishift)];
    }
    for (int row3i = 0; row3i < 1<<width; row3i++) {
-      int row3 = valorder[row3i] ;
-      int row4 = gWork3[row3] ;
+      int row3 = valorder[row3i];
+      int row4 = gWork3[row3];
       if (row4 < 0)
-         continue ;
-      gWork2[good] = row3 ;
-      gWork[good++] = row4 ;
+         continue;
+      gWork2[good] = row3;
+      gWork[good++] = row4;
    }
    
    /* bmalloc, unbmalloc, and all operations that read from or write to */
@@ -633,77 +635,66 @@ uint16_t *makeRow(int row1, int row2) {
    uint16_t *theRow;
    #pragma omp critical(updateTable)
    {
-      theRow = bmalloc((1+(1<<width)+good)) ;
+      theRow = bmalloc((1+(1<<width)+good));
       for (int row3=0; row3 < 1<<width; row3++)
-         theRow[row3] = 0 ;
-      theRow[0] = 1 + (1 << width) ;
+         theRow[row3] = 0;
+      theRow[0] = 1 + (1 << width);
       for (int row3=0; row3 < good; row3++)
-         theRow[gWork[row3]]++ ;
-      theRow[1<<width] = 0 ;
+         theRow[gWork[row3]]++;
+      theRow[1<<width] = 0;
       for (int row3=0; row3 < (1<<width); row3++)
-         theRow[row3+1] += theRow[row3] ;
+         theRow[row3+1] += theRow[row3];
       for (int row3=good-1; row3>=0; row3--) {
-         int row4 = gWork[row3] ;
-         theRow[--theRow[row4]] = gWork2[row3] ;
+         int row4 = gWork[row3];
+         theRow[--theRow[row4]] = gWork2[row3];
       }
-      unsigned int h = hashRow(theRow, 1+(1<<width)+good) ;
-      h &= (2 << (2 * width)) - 1 ;
+      unsigned int h = hashRow(theRow, 1+(1<<width)+good);
+      h &= (2 << (2 * width)) - 1;
       while (1) {
          if (rowHash[h] == -1) {
-            rowHash[h] = (row1 << width) + row2 ;
-            break ;
+            rowHash[h] = (row1 << width) + row2;
+            break;
          }
          /* Maybe two different row12s result in the exact same rows for the */
          /* lookup table. This prevents two different threads from trying to */
          /* build the same part of the lookup table.                         */
          if (memcmp(theRow, gInd3[rowHash[h]], 2*(1+(1<<width)+good)) == 0) {
-            theRow = gInd3[rowHash[h]] ;
-            unbmalloc(1+(1<<width)+good) ;
-            break ;
+            theRow = gInd3[rowHash[h]];
+            unbmalloc(1+(1<<width)+good);
+            break;
          }
-         h = (h + 1) & ((2 << (2 * width)) - 1) ;
+         h = (h + 1) & ((2 << (2 * width)) - 1);
       }
       
-      gInd3[(row1<<width)+row2] = theRow ;
+      gInd3[(row1<<width)+row2] = theRow;
    }
    
-/*
- *   For debugging:
- *
-   printf("R") ;
-   for (int i=0; i<1+(1<<width)+good; i++)
-      printf(" %d", theRow[i]) ;
-   printf("\n") ;
-   fflush(stdout) ;
- */
-   
-   return theRow ;
+   return theRow;
 }
 
-/*
-**   We calculate the stats using a 2 * 64 << width array.  We use a
+/*   We calculate the stats using a 2 * 64 << width array.  We use a
 **   leading 1 to separate them.  Index 1 aaa bb cc dd represents
 **   the count for a result of aaa when the last two bits of row1, row2,
 **   and row3 were bb, cc, and dd, respectively.  We have to manage
 **   the edge conditions appropriately.
 */
 void genStatCounts() {
-   int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width) ;
+   int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width);
    for (int i=0; i<128<<width; i++)
-      cnt[i] = 0 ;
-   int s = 0 ;
+      cnt[i] = 0;
+   int s = 0;
    if (params[P_SYMMETRY] == SYM_ODD)
-      s = 2 ;
+      s = 2;
    else if (params[P_SYMMETRY] == SYM_EVEN)
-      s = 1 ;
+      s = 1;
    else
-      s = width + 2 ;
+      s = width + 2;
    /* left side: never permit generation left of row4 */
    for (int row1=0; row1<2; row1++)
       for (int row2=0; row2<2; row2++)
          for (int row3=0; row3<2; row3++)
             if (evolveBit(row1, row2, row3) == 0)
-               cnt[(1<<6) + (row1 << 4) + (row2 << 2) + row3]++ ;
+               cnt[(1<<6) + (row1 << 4) + (row2 << 2) + row3]++;
    for (int nb=0; nb<width; nb++) {
       for (int row1=0; row1<8; row1++)
          for (int row2=0; row2<8; row2++)
@@ -712,13 +703,13 @@ void genStatCounts() {
                   if ((((row1 >> s) ^ row1) & 1) ||
                       (((row2 >> s) ^ row2) & 1) ||
                       (((row3 >> s) ^ row3) & 1))
-                     continue ;
-               int row4b = evolveBit(row1, row2, row3) ;
+                     continue;
+               int row4b = evolveBit(row1, row2, row3);
                for (int row4=0; row4<1<<nb; row4++)
                   cnt[(((((1<<nb) + row4) << 1) + row4b) << 6) +
                     ((row1 & 3) << 4) + ((row2 & 3) << 2) + (row3 & 3)] +=
                      cnt[(((1<<nb) + row4) << 6) +
-                       ((row1 >> 1) << 4) + ((row2 >> 1) << 2) + (row3 >> 1)] ;
+                       ((row1 >> 1) << 4) + ((row2 >> 1) << 2) + (row3 >> 1)];
             }
    }
    /* right side; check left, and accumulate into gcount */
@@ -730,15 +721,17 @@ void genStatCounts() {
                for (int row4=0; row4<1<<width; row4++)
                   gcount[row4] +=
                      cnt[(((1<<width) + row4) << 6) +
-                       (row1 << 4) + (row2 << 2) + row3] ;
-   free(cnt) ;
+                       (row1 << 4) + (row2 << 2) + row3];
+   free(cnt);
 }
 
 /* ====================================================== */
 /*  Hash table for detecting equivalent partial patterns  */
 /* ====================================================== */
 
-void resetHash() { if (hash != 0) memset(hash,0,4*HASHSIZE); }
+void resetHash() {
+   if (hash != 0) memset(hash,0,4*HASHSIZE);
+}
 
 int hashPhase = 0;
 
@@ -781,7 +774,7 @@ static inline int isVisited(node b, row r) {
    return 0;
 }
 
-/* set node (NOT child) to be visited */
+/* Add node (NOT child) to hash table */
 static inline void setVisited(node b) {
    if (hash != 0) hash[ hashFunction(PARENT(b),ROW(b)) ] = b;
 }
@@ -845,8 +838,7 @@ int modeWidth() {
 
 /* Avoid Intel shift bug */
 static inline unsigned long
-safeShift(unsigned long r, int i)
-{
+safeShift(unsigned long r, int i) {
     unsigned long rr = r;
     while (i>16) { rr >>= 16; i-=16;}
     return (rr>>i);
@@ -860,7 +852,7 @@ unsigned long * oldsrows;
 unsigned long * oldssrows;
 
 /* Buffers RLE into patternBuf; returns 1 if pattern successfully buffered */ 
-int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printExpected){
+int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printExpected) {
    node c;
    int nrows = 0;
    int swidth;
@@ -872,9 +864,9 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    int nDeepRows = 0;
    int nodeDiff;
 
-   if(pRows != NULL){
-      while(pRows[currRow] == 0){
-         if(currRow == 0){
+   if (pRows != NULL){
+      while (pRows[currRow] == 0){
+         if (currRow == 0){
             if(!printExpected) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
@@ -886,7 +878,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
       nodeDiff = nodeRow - period - (currRow%period);
       nodeRow -= nodeDiff;
 
-      for(j = 0; j < nodeDiff; j++){
+      for (j = 0; j < nodeDiff; j++){
          b = PARENT(b);
       }
       currRow = currRow - period + 1;
@@ -906,7 +898,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
          }
       }
    }
-   if(nrows < 0) nrows = 0;
+   if (nrows < 0) nrows = 0;
    
    for (p = 0; p < period-1; p++) b = PARENT(b);
    if (b == 0) {
@@ -947,7 +939,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    for (i = 0; i <= nrows+MAXWIDTH; i++) srows[i]=ssrows[i]=0;
    for (i = nrows - 1; i >= 0; i--) {
       row r;
-      if(nDeepRows > 0){
+      if (nDeepRows > 0){
          r = pRows[currRow];
          currRow -= period;
          nDeepRows--;
@@ -1005,13 +997,13 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    
    /* sanity check: is the pattern nonempty? */
    int allEmpty = 1;
-   for(i = 0; i < nrows; i++){
-      if(srows[i]){
+   for (i = 0; i < nrows; i++){
+      if (srows[i]){
          allEmpty = 0;
          break;
       }
    }
-   if(allEmpty) return 0;
+   if (allEmpty) return 0;
    
    /* make at least one row have nonzero first bit */
    i = 0;
@@ -1041,7 +1033,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    margin = 0;
 
    /* make sure we didn't just output the exact same pattern */
-   if(printExpected){
+   if (printExpected){
       if (nrows == oldnrows) {
          int different = 0;
          for (i = 0; i < nrows && !different; i++)
@@ -1063,7 +1055,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    sprintf(patternBuf,"x = %d, y = %d, rule = %s\n", swidth - margin, nrows, baseRule);
    
    int theBufRow = -1;
-   while(theBufRow++ < nrows){
+   while (theBufRow++ < nrows){
       bufRow(ssrows[theBufRow], srows[theBufRow], 0);
    }
    RLEcount = 1;     /* prevents erroneous printing of '2' at end of RLE */
@@ -1071,9 +1063,9 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    bufRLE('\0');
    sprintf(patternBuf+strlen(patternBuf),"\n");
    
-   if(printExpected){
+   if (printExpected){
       numFound++;
-      if(params[P_NUMSHIPS] > 0){
+      if (params[P_NUMSHIPS] > 0){
          if(--params[P_NUMSHIPS] == 0) aborting = 3;  /* use 3 to flag that we reached ship limit */
       }
    }
@@ -1086,7 +1078,7 @@ void makeSubperiodTables(void);
 int subperiodic(node x, row *pRows, int nodeRow, uint32_t lastRow);
 #endif
 
-void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
+void success(node b, row *pRows, int nodeRow, uint32_t lastRow) {
 #ifndef QSIMPLE
    if (subperiodic(b, pRows, nodeRow, lastRow)) return;
 #endif
@@ -1095,8 +1087,8 @@ void success(node b, row *pRows, int nodeRow, uint32_t lastRow){
    fflush(stdout);
 }
 
-/* Is this a node at which we can stop? */
-int terminal(node n){
+/* Test if this is a node at which we can stop */
+int terminal(node n) {
    int p;
 
    for (p = 0; p < period; p++) {   /* last row in each phase must be zero */
@@ -1105,7 +1097,7 @@ int terminal(node n){
    }
 
    for (p = 0; p < period; p++) {
-      if(causesBirth[ROW(n)]) return 0;
+      if (causesBirth[ROW(n)]) return 0;
       n = PARENT(n);
    }
    return 1;
@@ -1122,15 +1114,16 @@ node qStart; /* index of first node in queue */
 node qEnd;   /* index of first unused node after end of queue */
 
 /* Maintain phase of queue nodes.  After dequeue(), the global variable phase
-   gives the phase of the dequeued item.  If the queue is compacted, this information
-   needs to be reinitialized by a call to rephase(), after which phase will not be
-   valid until the next call to dequeue().  Variable nextRephase points to the next
-   node for which dequeue will need to increment the phase. Phase is not maintained
-   when treating queue as a stack (using pop()) -- caller must do it in that case.
-   It's ok to change phase since we maintain a separate copy in queuePhase. */
-
+** gives the phase of the dequeued item.  If the queue is compacted, this information
+** needs to be reinitialized by a call to rephase(), after which phase will not be
+** valid until the next call to dequeue().  Variable nextRephase points to the next
+** node for which dequeue will need to increment the phase. Phase is not maintained
+** when treating queue as a stack (using pop()) -- caller must do it in that case.
+** It's ok to change phase since we maintain a separate copy in queuePhase.
+*/
 int queuePhase = 0;
 node nextRephase = 0;
+
 void rephase() {
    node x, y;
    while (qHead < qTail && EMPTY(qHead)) qHead++;   /* skip empty queue cells */
@@ -1142,8 +1135,8 @@ void rephase() {
    }
    queuePhase %= period;
 
-   /* now walk forward through queue finding breakpoints between each generation
-      invariants: y is always the first in its generation */
+   /* Now walk forward through queue finding breakpoints between each generation. */
+   /* invariants: y is always the first in its generation                         */
    x = 0; y = 0;
    while (y <= qHead) {
       ++x;
@@ -1221,9 +1214,11 @@ static inline void pop() {
    while (qTail > qHead && EMPTY(qTail-1)) qTail--;
 }
 
-void resetQ() { qHead = qTail = 0; deepQHead = deepQTail = 0; }
+void resetQ() {
+   qHead = qTail = 0; deepQHead = deepQTail = 0;
+}
 
-static inline int qTop() { return qTail - 1; }
+//static inline int qTop() { return qTail - 1; }
 
 /* =================== */
 /*  Dump search state  */
@@ -1247,7 +1242,7 @@ int dumpMode;  /* separate from params[P_DUMPMODE] for splitting */
 #define D_OVERWRITE  (1)
 #define D_SEQUENTIAL (2)
 
-void parseDumpRoot(){
+void parseDumpRoot() {
    char tempStr[MAXDUMPROOT + 10]  = {'\0'};
    char tempRule[151] = {'\0'};
    char *r, *t;
@@ -1389,9 +1384,7 @@ long currentDepth() {
 ** converts parent bits back to parent pointers.  The search
 ** state may be saved in between.
 */
-
-void doCompactPart1()
-{
+void doCompactPart1() {
    node x,y;
    qEnd = qTail;
    
@@ -1410,8 +1403,8 @@ void doCompactPart1()
       y--;
    }
    
-   /* make a pass forwards converting parent pointers to offset from prev parent ptr.
-      note that after unused nodes are eliminated, all these offsets are zero or one. */
+   /* make a pass forwards converting parent pointers to offset from prev parent ptr. */
+   /* note that after unused nodes are eliminated, all these offsets are zero or one. */
    y = 0;
    for (x = 0; x < qTail; x++) if (!EMPTY(x)) {
       if (PARENT(x) == y) rows[x] = ROW(x);
@@ -1421,17 +1414,16 @@ void doCompactPart1()
       }
    }
    
-   /*
-      Make a pass backwards compacting gaps.
-   
-      For most times we run this, it could be combined with the next phase, but
-      every once in a while the process of repacking the remaining items causes them
-      to use *MORE* space than they did before they were repacked (because of the need
-      to leave empty space when OFFSET gets too big) and without this phase the repacked
-      stuff overlaps the not-yet-repacked stuff causing major badness.
-      
-      For this phase, y points to the current item to be repacked, and x points
-      to the next free place to pack an item.
+   /* Make a pass backwards compacting gaps.
+   **
+   ** For most times we run this, it could be combined with the next phase, but
+   ** every once in a while the process of repacking the remaining items causes them
+   ** to use *MORE* space than they did before they were repacked (because of the need
+   ** to leave empty space when ROFFSET gets too big) and without this phase the repacked
+   ** stuff overlaps the not-yet-repacked stuff causing major badness.
+   ** 
+   ** For this phase, y points to the current item to be repacked, and x points
+   ** to the next free place to pack an item.
    */
    x = y = qTail-1;
    for (;;) {
@@ -1445,20 +1437,18 @@ void doCompactPart1()
    qStart = ++x;     /* mark start of queue */
 }
 
-void doCompactPart2()
-{
+void doCompactPart2() {
    node x,y;
    uint32_t i, j;
    int k;
    
-   /*
-      Make a pass forwards converting parent bits back to parent pointers.
-      
-      For this phase, x points to the current item to be repacked, and y points
-      to the parent of the previously repacked item.
-      After the previous pass, x is initialized to first nonempty item,
-      and all items after x are nonempty. 
-    */
+   /* Make a pass forwards converting parent bits back to parent pointers.
+   ** 
+   ** For this phase, x points to the current item to be repacked, and y points
+   ** to the parent of the previously repacked item.
+   ** After the previous pass, x is initialized to first nonempty item,
+   ** and all items after x are nonempty. 
+   */
    qTail = 0; y = 0;
    resetHash();
    for (x = qStart; x < qEnd; x++) {
@@ -1475,8 +1465,8 @@ void doCompactPart2()
    
    /* Repack and respace depth-first extension queue to match node queue */
    j = QSIZE - 1;
-   for(i = QSIZE; i > 0; --i){
-      if(deepRowIndices[i - 1]){
+   for (i = QSIZE; i > 0; --i){
+      if (deepRowIndices[i - 1]){
          deepRowIndices[j] = deepRowIndices[i - 1];
          deepRowIndices[i - 1] = 0;
          --j;
@@ -1484,7 +1474,7 @@ void doCompactPart2()
    }
    
    /* Sanity check: extension queue should not take up all available space */
-   if(deepRowIndices[0]){
+   if (deepRowIndices[0]){
       fprintf(stderr,"Error: extension queue has too many elements.\n");
       exit(1);
    }
@@ -1492,8 +1482,8 @@ void doCompactPart2()
    i = 0;
    j = 0;
    while(!deepRowIndices[j] && j < QSIZE) ++j;
-   for(x = qHead; x < qTail && j < QSIZE; ++x){
-      if(EMPTY(x)){
+   for (x = qHead; x < qTail && j < QSIZE; ++x){
+      if (EMPTY(x)){
          ++i;
          continue;
       }
@@ -1501,11 +1491,11 @@ void doCompactPart2()
       deepRowIndices[i] = deepRowIndices[j];
       
       /* Sanity check: do the extension rows match the node rows? */
-      if(deepRowIndices[j] > 1){
+      if (deepRowIndices[j] > 1){
          y = x;
-         for(k = 0; k < 2*period; ++k){
+         for (k = 0; k < 2*period; ++k){
             uint16_t startRow = deepRows[deepRowIndices[j]][1] + 1;
-            if(deepRows[deepRowIndices[j]][startRow - k] != ROW(y)){
+            if (deepRows[deepRowIndices[j]][startRow - k] != ROW(y)){
                fprintf(stderr, "Warning: non-matching rows detected at node %u in doCompactPart2()\n",x);
                free(deepRows[deepRowIndices[j]]);
                deepRows[deepRowIndices[j]] = 0;
@@ -1515,26 +1505,25 @@ void doCompactPart2()
             y = PARENT(y);
          }
       }
-      if(j > i) deepRowIndices[j] = 0;
+      if (j > i) deepRowIndices[j] = 0;
       ++i;
       ++j;
    }
-   for(j = qTail - qHead; j < QSIZE; ++j){
+   for (j = qTail - qHead; j < QSIZE; ++j){
       deepRowIndices[j] = 0;
    }
    deepQHead = 0;
    deepQTail = qTail - qHead;
 }
 
-void doCompact()
-{
+void doCompact() {
    /* make sure we still have something left in the queue */
    if (qIsEmpty()) {
       qTail = qHead = 0;   /* nothing left, make an extremely compact queue */
       return;
    }
-   /* First loop of part 1 requires qTail-1 to be non-empty.  Make it so */
-   while(EMPTY(qTail-1))
+   /* First loop of part 1 requires qTail-1 to be non-empty.  Make it so. */
+   while (EMPTY(qTail-1))
       qTail--;
    
    doCompactPart1();
@@ -1549,28 +1538,28 @@ void doCompact()
 #ifndef NOCACHE
 int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
 #ifndef QSIMPLE
-   if(params[P_CACHEMEM] == 0) return 0;
+   if (params[P_CACHEMEM] == 0) return 0;
 #endif
    unsigned long long h = (unsigned long long)p1 +
       17 * (unsigned long long)p2 + 257 * (unsigned long long)p3 +
-      513 * abn ;
-   h = h + (h >> 15) ;
-   h &= (cachesize-1) ;
-   cacheentry *ce = &(cache[omp_get_thread_num()][h]) ;
+      513 * abn;
+   h = h + (h >> 15);
+   h &= (cachesize-1);
+   cacheentry *ce = &(cache[omp_get_thread_num()][h]);
    if (ce->p1 == p1 && ce->p2 == p2 && ce->p3 == p3 && ce->abn == abn)
-      return -2 + ce->r ;
-   ce->p1 = p1 ;
-   ce->p2 = p2 ;
-   ce->p3 = p3 ;
-   ce->abn = abn ;
-   return h ;
+      return -2 + ce->r;
+   ce->p1 = p1;
+   ce->p2 = p2;
+   ce->p3 = p3;
+   ce->abn = abn;
+   return h;
 }
 
 void setkey(int h, int v) {
 #ifndef QSIMPLE
-   if(params[P_CACHEMEM])
+   if (params[P_CACHEMEM])
 #endif
-      cache[omp_get_thread_num()][h].r = v ;
+      cache[omp_get_thread_num()][h].r = v;
 }
 #endif
 
@@ -1581,7 +1570,7 @@ void setkey(int h, int v) {
 void process(node theNode);
 int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows);
 
-static void deepen(){
+static void deepen() {
    node i;
    
    /* compute amount to deepen, apply reduction if too deep */
@@ -1660,8 +1649,7 @@ static void deepen(){
    fflush(stdout);
 }
 
-static void breadthFirst()
-{
+static void breadthFirst() {
    while (!aborting && !qIsEmpty()) {
       if (qTail - qHead >= (1LLU<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16 ||
           qTail >= QSIZE - (deepeningAmount << 2)) deepen();
@@ -1669,13 +1657,13 @@ static void breadthFirst()
    }
 }
 
-void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRows){
+void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRows) {
    uint32_t theDeepIndex;
    #pragma omp critical(findDeepIndex)
    {
       theDeepIndex = 2;
-      while(deepRows[theDeepIndex] && theDeepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
-      if(theDeepIndex == 1LLU << (params[P_DEPTHLIMIT] + 1)){
+      while (deepRows[theDeepIndex] && theDeepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
+      if (theDeepIndex == 1LLU << (params[P_DEPTHLIMIT] + 1)){
          fprintf(stderr,"Error: no available extension indices.\n");
          aborting = 1;
       }
@@ -1684,7 +1672,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
                                                 sizeof(**deepRows) );
       }
    }
-   if(aborting) return;
+   if (aborting) return;
    
    memcpy( deepRows[theDeepIndex] + 2,
            pRows,
@@ -1700,7 +1688,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /*  Print usage instructions  */
 /* ========================== */
 
-void printHelp(const char *programName){
+void printHelp(const char *programName) {
    printf("Usage:    %s "
 #ifndef QSIMPLE
                          "-v <velocity> "
@@ -1796,7 +1784,7 @@ void printHelp(const char *programName){
 /*  Echo loaded parameters  */
 /* ======================== */
 
-void echoParams(){
+void echoParams() {
    printf("\n");
    printf("Rule: %s\n",rule);
    printf("speed: ");
@@ -1859,12 +1847,12 @@ static void preview(/*int allPhases*/) {
       if (!EMPTY(j)) {
          uint32_t theDeepIndex = deepRowIndices[deepQHead + j - qHead];
          
-         if(theDeepIndex > 1){
+         if (theDeepIndex > 1){
             pRows = (row*) malloc((2*period + 1 + deepRows[theDeepIndex][0]
                                    - deepRows[theDeepIndex][1] + 1) * (long long)sizeof(*pRows));
             int m;
             node x = j;
-            for(m = 2*period; m >= 0; --m){
+            for (m = 2*period; m >= 0; --m){
                pRows[m] = ROW(x);
                x = PARENT(x);
             }
@@ -1907,7 +1895,7 @@ void optError(const char *errorMsg, const char *opt) {
    aborting = 1;
 }
 
-void printError(const char *errorMsg){
+void printError(const char *errorMsg) {
    optError(errorMsg,"");
 }
 
@@ -1931,8 +1919,8 @@ int checkConditions(const char *p) {
    p++;
    int val = -1;
    while (*p != '\0'){
-      char dig = *p++ ;
-      int negCount = 0 ;
+      char dig = *p++;
+      int negCount = 0;
       if (*p == '\0' || ('0' <= *p && *p <= '8')){
          for (i = 0; i < 256; i++){
             if (rulekeys[i][0] == dig && nttable[bs+i] != -1){
@@ -1945,7 +1933,7 @@ int checkConditions(const char *p) {
       }
       else if (*p == '-'){
          p++;
-         for(i = 0; i < 256; i++)
+         for (i = 0; i < 256; i++)
             tempTab[256] = 0;
          for (; *p != '\0' && !('0' <= *p && *p <= '8'); p++){
             for (i = 1; i < 256; i++)
@@ -1953,7 +1941,7 @@ int checkConditions(const char *p) {
                   tempTab[i]++;
             negCount++;
          }
-         for(i = 0; i < 256; i++){
+         for (i = 0; i < 256; i++){
             if (tempTab[i] == negCount && nttable[bs+i] != -1){
                if (val == -1)
                   val = nttable[bs+i];
@@ -2064,17 +2052,17 @@ void checkRule() {
    }
 }
 
-void checkGutter(){
+void checkGutter() {
    int i = 0;
    /* if there are forbidden birth conditions, i will be less than 256 */
    while (i < 256 && nttable[i] != -1)
       i++;
    
-   if(checkConditions("B2ce4ci6i") <= 0)
+   if (checkConditions("B2ce4ci6i") <= 0)
       gutterSkew = 0;
-   else if(checkConditions("B1c2kn3ny4yz5r6i") <= 0)
+   else if (checkConditions("B1c2kn3ny4yz5r6i") <= 0)
       gutterSkew = 1;
-   else if(checkConditions("B12aikn3cqr4cnyz5er6i") <= 0)
+   else if (checkConditions("B12aikn3cqr4cnyz5er6i") <= 0)
       gutterSkew = 2;
    else {
       printError("gutters do not work with the given birth conditions.\n       "
@@ -2087,7 +2075,7 @@ void checkGutter(){
       fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along a skew gutter.\n");
 }
 
-void checkParams(){
+void checkParams() {
    const char *ruleError;
    
    /* Errors */
@@ -2106,7 +2094,7 @@ void checkParams(){
    else
       checkRule();
    
-   if(params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)
+   if (params[P_SYMMETRY] == SYM_GUTTER || params[P_BOUNDARYSYM] == SYM_GUTTER)
       checkGutter();
    
 #ifdef QSIMPLE
@@ -2165,15 +2153,15 @@ void checkParams(){
       mode = (enum Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
-   if(params[P_QBITS] > 31 && !aborting){
+   if (params[P_QBITS] > 31 && !aborting){
       fprintf(stderr, "Warning: queue bits (-q) reduced to 31.\n");
       params[P_QBITS] = 31;      /* corresponds to a queue size of 2GB */
-      if(params[P_BASEBITS] > params[P_QBITS]){
+      if (params[P_BASEBITS] > params[P_QBITS]){
          fprintf(stderr, "Warning: base bits (-q) reduced to 30.\n");
          params[P_BASEBITS] = 30;
       }
    }
-   if(params[P_HASHBITS] > 31 && !aborting){
+   if (params[P_HASHBITS] > 31 && !aborting){
       fprintf(stderr, "Warning: hash bits (-h) reduced to 31.\n");
       params[P_HASHBITS] = 31;   /* corresponds to a hash table size of 2GB */
    }
@@ -2188,18 +2176,18 @@ int splitNum = 0;
 int newLastDeep = 0;
 char * loadFile;
 
-void loadFail(){
+void loadFail() {
    fprintf(stderr, "Load from file %s failed\n", loadFile);
    exit(1);
 }
 
-signed int loadInt(FILE *fp){
+signed int loadInt(FILE *fp) {
    signed int v;
    if (fscanf(fp,"%d\n",&v) != 1) loadFail();
    return v;
 }
 
-unsigned long loadUInt(FILE *fp){
+unsigned long loadUInt(FILE *fp) {
    unsigned long v;
    if (fscanf(fp,"%lu\n",&v) != 1) loadFail();
    return v;
@@ -2232,7 +2220,7 @@ void loadParams() {
       params[i] = loadInt(fp);
 }
 
-void loadState(){
+void loadState() {
    FILE * fp;
    unsigned long i, j;
    int k;
@@ -2288,15 +2276,6 @@ void loadState(){
    for (i = qStart; i < qEnd; ++i)
       rows[i] = (row) loadUInt(fp);
    
-   /*
-   printf("qHead:  %d qStart: %d qEnd: %d\n",qHead,qStart,qEnd);
-   printf("rows[0]: %d\n",rows[qStart]);
-   printf("rows[1]: %d\n",rows[qStart+1]);
-   printf("rows[2]: %d\n",rows[qStart+2]);
-   fflush(stdout);
-   exit(0);
-   */
-   
    /* Load extension rows for each queue node */
    deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
    deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
@@ -2340,13 +2319,13 @@ void loadState(){
 /*  Load initial rows for extending partial results  */
 /* ================================================= */
 
-void printRow(row theRow){
+void printRow(row theRow) {
    int i;
-   for(i = width - 1; i >= 0; --i) printf("%c",(theRow & 1 << i ? 'o' : '.'));
+   for (i = width - 1; i >= 0; --i) printf("%c",(theRow & 1 << i ? 'o' : '.'));
    printf("\n");
 }
 
-void loadInitRows(char * file){
+void loadInitRows(char * file) {
    FILE * fp;
    int i,j;
    char rowStr[MAXWIDTH];
@@ -2358,9 +2337,9 @@ void loadInitRows(char * file){
    
    printf("Starting search from rows in %s:\n",loadFile);
    
-   for(i = 0; i < 2 * period; i++){
+   for (i = 0; i < 2 * period; i++){
       if (fscanf(fp,"%s",rowStr) != 1) loadFail();
-      for(j = 0; j < width; j++){
+      for (j = 0; j < width; j++){
          theRow |= ((rowStr[width - j - 1] == '.') ? 0:1) << j;
       }
       printRow(theRow);
@@ -2374,7 +2353,7 @@ void loadInitRows(char * file){
 /*  Set Defaults  */
 /* ============== */
 
-void setDefaultParams(){
+void setDefaultParams() {
 #ifdef QSIMPLE
    params[P_PERIOD] = PERIOD;
    params[P_OFFSET] = OFFSET;
@@ -2483,7 +2462,7 @@ int my_getopt( int argc,
    return '?';
 }
 
-int readInt(char *opt, char *arg){
+int readInt(char *opt, char *arg) {
    int c = 0;
    if (arg == 0)
       aborting = 1;
@@ -2494,7 +2473,7 @@ int readInt(char *opt, char *arg){
    return c;
 }
 
-const char *parseVelocity(char *velString, int *per, int *off){
+const char *parseVelocity(char *velString, int *per, int *off) {
    int xoff = 0;
    *per = 1;
    *off = 1;
@@ -2546,7 +2525,7 @@ const char *parseVelocity(char *velString, int *per, int *off){
    return "Unable to read offset and period.";
 }
 
-void parseOptions(int argc, char *argv[]){
+void parseOptions(int argc, char *argv[]) {
    char *optArg = 0;
    char *optName = 0;
    int c;
@@ -2613,12 +2592,12 @@ void parseOptions(int argc, char *argv[]){
                            "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:Z",    /* a,u,x,y,A,U,X,Y   */
                            options,
                            &optName,
-                           &optArg)) != -1)
+                           &optArg)) != -1 )
    {
       switch (c) {
          case 'r': case 'R':
             rule = optArg;
-            if(strlen(rule) > 150)  /* any valid rule can be written in 141 characters or fewer */
+            if (strlen(rule) > 150)  /* any valid rule can be written in 141 characters or fewer */
                printError("rule string exceeds maximum allowed length (150).\n       "
                           "You must write the rule more efficiently.\n");
             break;
@@ -2736,7 +2715,7 @@ void parseOptions(int argc, char *argv[]){
             break;
          case 'j': case 'J':
             splitNum = readInt(optName, optArg);
-            if(splitNum < 0) splitNum = 0;
+            if (splitNum < 0) splitNum = 0;
             break;
          case 'e': case 'E':
             initRows = optArg;
@@ -2797,7 +2776,7 @@ void parseOptions(int argc, char *argv[]){
 /*  Set up search with the given parameters  */
 /* ========================================= */
 
-void searchSetup(){
+void searchSetup() {
    if (params[P_CACHEMEM] < 0){
       if (5 * params[P_OFFSET] > params[P_PERIOD]) params[P_CACHEMEM] *= -1;
       else params[P_CACHEMEM] = 0;
@@ -2810,7 +2789,7 @@ void searchSetup(){
       exit(1);
    }
    
-   if(loadDumpFlag) loadState();
+   if (loadDumpFlag) loadState();
    else {
       width = params[P_WIDTH];
       period = params[P_PERIOD];
@@ -2843,7 +2822,7 @@ void searchSetup(){
       
       enqueue(0,0);
       
-      if(initRowsFlag) loadInitRows(initRows);
+      if (initRowsFlag) loadInitRows(initRows);
    }
    
 #ifndef QSIMPLE
@@ -2858,28 +2837,28 @@ void searchSetup(){
    for (i = 0; i < 151 && rule[i] != '\0'; i++){
       if (rule[i] == '~') k = 0;
       else if (rule[i] == '/') k = 1;
-      if(k) baseRule[j++] = rule[i];
+      if (k) baseRule[j++] = rule[i];
    }
    baseRule[j] = '\0';
    
-   if(previewFlag){
+   if (previewFlag){
       params[P_NUMSHIPS] = 0;
       preview();
       exit(0);
    }
    
-   if(params[P_MINEXTENSION] < 0) params[P_MINEXTENSION] = 0;
+   if (params[P_MINEXTENSION] < 0) params[P_MINEXTENSION] = 0;
    
    /* correction of params[P_LASTDEEP] after modification */
-   if(newLastDeep){
+   if (newLastDeep){
       params[P_LASTDEEP] -= MINDEEP;
-      if(params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
+      if (params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
    }
    
    dumpMode = params[P_DUMPMODE];   /* these may need to be different when splitting */
    
    /* split queue across multiple files */
-   if(splitNum > 0){
+   if (splitNum > 0){
       node x;
       uint32_t i,j;
       uint32_t deepIndex;
@@ -2893,13 +2872,13 @@ void searchSetup(){
       
       if(!loadDumpFlag || qHead == 0 || splitNum == 1){
          dumpFlag = DUMPPENDING;
-         if(qHead == 0){      /* can't use doCompact() here, because it tries to access rows[-1] */
+         if (qHead == 0){      /* can't use doCompact() here, because it tries to access rows[-1] */
             qStart = qHead;
             qEnd = qTail;
             dumpState();
          }
          else doCompact();
-         if(dumpFlag == DUMPSUCCESS){
+         if (dumpFlag == DUMPSUCCESS){
             printf("State dumped to %s\n",dumpFile);
             exit(0);
          }
@@ -2909,13 +2888,13 @@ void searchSetup(){
          }
       }
       
-      if(splitNum >= 100000){
+      if (splitNum >= 100000){
          fprintf(stderr, "Warning: queue cannot be split into more than 99999 files.\n");
          splitNum = 99999;
       }
       
       /* count nodes in queue */
-      for(x = qHead; x < qTail; x++){
+      for (x = qHead; x < qTail; x++){
          if(!EMPTY(x)) totalNodes++;
       }
       
@@ -2942,14 +2921,14 @@ void searchSetup(){
       
       node currNode = fixedQHead;
       
-      while(currNode < fixedQTail){
+      while (currNode < fixedQTail){
          
          /* load the queue */
          loadState();
          
          /* empty everything before currNode */
          j = deepQHead;
-         for(x = fixedQHead; x < currNode; ++x){
+         for (x = fixedQHead; x < currNode; ++x){
             MAKEEMPTY(x);
             deepRowIndices[j] = 0;
             ++j;
@@ -2957,7 +2936,7 @@ void searchSetup(){
          
          /* skip the specified number of nonempty nodes */
          i = 0;
-         while(i < nodesPerFile && x < fixedQTail){
+         while (i < nodesPerFile && x < fixedQTail){
             if(!EMPTY(x))
                ++i;
             ++x;
@@ -2968,7 +2947,7 @@ void searchSetup(){
          currNode = x;
          
          /* empty everything after specified nonempty nodes */
-         while(x < fixedQTail){
+         while (x < fixedQTail){
             MAKEEMPTY(x);
             deepRowIndices[j] = 0;
             ++x;
@@ -2986,7 +2965,7 @@ void searchSetup(){
             exit(1);
          }
          
-         if(dumpNum >= DUMPLIMIT){
+         if (dumpNum >= DUMPLIMIT){
             fprintf(stderr, "Error: dump file number limit (" XSTR(DUMPLIMIT) ") reached.\n");
             fprintf(stderr, "       Try splitting the queue in a new directory.\n");
             exit(1);
@@ -3015,19 +2994,19 @@ void searchSetup(){
    
    /* Allocate lookahead cache */
 #ifndef NOCACHE
-   cachesize = 32768 ;
+   cachesize = 32768;
    while (cachesize * sizeof(cacheentry) < 550000 * (unsigned long long)params[P_CACHEMEM])
-      cachesize <<= 1 ;
+      cachesize <<= 1;
    memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
-   if(params[P_MEMLIMIT] >= 0 && memusage > memlimit){
+   if (params[P_MEMLIMIT] >= 0 && memusage > memlimit){
       printf("Not enough memory to allocate lookahead cache\n");
       exit(1);
    }
    totalCache = (cacheentry *)calloc(sizeof(cacheentry),
-         (cachesize + 5) * params[P_NUMTHREADS]) ;
+         (cachesize + 5) * params[P_NUMTHREADS]);
    cache = (cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
    
-   for(int i = 0; i < params[P_NUMTHREADS]; i++)
+   for (int i = 0; i < params[P_NUMTHREADS]; i++)
       cache[i] = totalCache + (cachesize + 5) * i;
 #endif
    
@@ -3044,14 +3023,14 @@ void searchSetup(){
    timeStamp();
 }
 
-void finalReport(){
+void finalReport() {
    timeStamp();
    printf("Search complete.\n\n");
    
    printf("%d %s%s found.\n",numFound,(params[P_BOUNDARYSYM] == SYM_UNDEF) ? "spaceship" : "wave",(numFound == 1) ? "" : "s");
    printf("Maximum depth reached: %d\n",longest);
-   if(params[P_LONGEST] && aborting != 3){ /* aborting == 3 means we reached ship limit */
-      if(patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
+   if (params[P_LONGEST] && aborting != 3){ /* aborting == 3 means we reached ship limit */
+      if (patternBuf) printf("Longest partial result:\n\n%s",patternBuf);
       else printf("No partial results found.\n");
    }
 }
