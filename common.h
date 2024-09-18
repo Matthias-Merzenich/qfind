@@ -330,8 +330,6 @@ const char *parseRule(const char *rule, int *tab) {
 void makePhases(void);
 #endif
 
-unsigned char *causesBirth;
-
 char nttable2[512];
 
 int slowEvolveBit(int row1, int row2, int row3, int bshift) {
@@ -520,13 +518,29 @@ int getcount(int row1, int row2, int row3) {
    return theRow[row3+1] - theRow[row3];
 }
 
+unsigned char *causesBirth;
+row *flip;
 int *gWorkConcat;       /* gWorkConcat to be parceled out between threads */
 int *rowHash;
 uint16_t *valorder;
 void genStatCounts();
 
+void makeFlip() {
+	row theRow;
+	int i;
+	for (theRow = 0; theRow < (1<<width); theRow++) {
+		row flippedRow = 0;
+		for (i = 0; i < width; i++)
+			if (theRow & (1<<i))
+				flippedRow |= 1 << (width - i - 1);
+		flip[theRow] = flippedRow;
+	}
+}
+
 void makeTables() {
-   causesBirth = (unsigned char*)malloc((long long)sizeof(*causesBirth)<<width);
+   flip = (row*)malloc(sizeof(*flip)<<width);
+   makeFlip();
+   causesBirth = (unsigned char*)malloc(sizeof(*causesBirth)<<width);
    gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2)));
    rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2)));
    for (int i=0; i<1<<(2*width); i++)
@@ -535,6 +549,7 @@ void makeTables() {
       rowHash[i] = -1;
    gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2);
+   
    uint32_t i;
    for (i = 0; i < 1LLU << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
    for (i = 0; i < 1LLU << width; ++i) gcount[i] = 0;
@@ -737,9 +752,11 @@ int hashPhase = 0;
 
 static inline long hashFunction(node b, row r) {
    long h = r;
+   if (params[P_SYMMETRY] == SYM_ASYM) h += flip[r];
    int i;
    for (i = 0; i < nRowsInState; i++) {
       h = (h * 269) + ROW(b);
+      if (params[P_SYMMETRY] == SYM_ASYM) h += flip[ROW(b)];
       b = PARENT(b);
    }
    h += (h>>16)*269;
@@ -760,16 +777,30 @@ static inline int same(node p, node q, row r) {
    return 1;
 }
 
+static inline int sameFlipped(node p, node q, row r) {
+   int i;
+   for (i = 0; i < nRowsInState; i++) {
+      if (p >= QSIZE || q >= QSIZE || EMPTY(p) || EMPTY(q)) return 0;   /* sanity check */
+      if (flip[ROW(p)] != r) return 0;
+      p = PARENT(p);
+      r = ROW(q);
+      q = PARENT(q);
+   }
+   return 1;
+}
+
 /* test if we've seen this child before */
 static inline int isVisited(node b, row r) {
    if (same(0,b,r)) return 1;
    if (hash != 0) {
       int hashVal = hashFunction(b,r);
       node hashNode = hash[hashVal];
-      if (hashNode == 0) return 0;
-      if (same(hashNode,b,r)){
+      if (hashNode == 0)
+         return 0;
+      else if (same(hashNode,b,r))
          return 1;
-      }
+      else if (params[P_SYMMETRY] == SYM_ASYM && sameFlipped(hashNode,b,r))
+         return 1;
    }
    return 0;
 }
