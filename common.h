@@ -2654,11 +2654,11 @@ void parseOptions(int argc, char *argv[]) {
          case 'k': case 'K':
             params[P_FULLPERIOD] ^= 1;
             break;
-         case 257:   /* --enable-full-period */
-            params[P_FULLPERIOD] = 1;
-            break;
-         case 258:   /* --disable-full-period */
+         case 257:   /* --enable-subperiod */
             params[P_FULLPERIOD] = 0;
+            break;
+         case 258:   /* --disable-subperiod */
+            params[P_FULLPERIOD] = 1;
             break;
 #endif
          case 'w': case 'W':
