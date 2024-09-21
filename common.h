@@ -899,7 +899,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    if (pRows != NULL){
       while (pRows[currRow] == 0){
          if (currRow == 0){
-            if(!printExpected) return 0;
+            if (!printExpected) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
             return 0;
@@ -923,7 +923,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
       while (ROW(b) == 0) {
          b = PARENT(b);
          if (b == 0) {
-            if(!printExpected) return 0;
+            if (!printExpected) return 0;
             printf("Success called on search root!\n");
             aborting = 1;
             return 0;
@@ -934,7 +934,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    
    for (p = 0; p < period-1; p++) b = PARENT(b);
    if (b == 0) {
-      if(!printExpected) return 0;
+      if (!printExpected) return 0;
       printf("Success called on search root!\n");
       aborting = 1;
       return 0;
@@ -1098,7 +1098,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    if (printExpected){
       numFound++;
       if (params[P_NUMSHIPS] > 0){
-         if(--params[P_NUMSHIPS] == 0) aborting = 3;  /* use 3 to flag that we reached ship limit */
+         if (--params[P_NUMSHIPS] == 0) aborting = 3;  /* use 3 to flag that we reached ship limit */
       }
    }
    
@@ -1301,7 +1301,7 @@ void parseDumpRoot() {
    
    /* replace additional occurrences of '@' and '^' with '_' */
    r = trueDumpRoot - 1;
-   while(*(++r) != '\0')
+   while (*(++r) != '\0')
       if (*r == '@' || *r == '^')
          *r = '_';
    
@@ -1514,7 +1514,7 @@ void doCompactPart2() {
    
    i = 0;
    j = 0;
-   while(!deepRowIndices[j] && j < QSIZE) ++j;
+   while (!deepRowIndices[j] && j < QSIZE) ++j;
    for (x = qHead; x < qTail && j < QSIZE; ++x){
       if (EMPTY(x)){
          ++i;
@@ -1611,7 +1611,7 @@ static void deepen() {
    if (i >= lastDeep) deepeningAmount = MINDEEP;
    else deepeningAmount = lastDeep + MINDEEP - i;   /* go at least MINDEEP deeper */
    
-   if(params[P_FIRSTDEEP]){
+   if (params[P_FIRSTDEEP]){
       deepeningAmount = params[P_FIRSTDEEP];
       params[P_FIRSTDEEP] = 0;
    }
@@ -1710,7 +1710,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
          fprintf(stderr,"Error: no available extension indices.\n");
          aborting = 1;
       }
-      if(!aborting){
+      if (!aborting){
          deepRows[theDeepIndex] = (row*)calloc( startRow + howDeep + 1 + 2,
                                                 sizeof(**deepRows) );
       }
@@ -1731,14 +1731,14 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /*  Print usage instructions  */
 /* ========================== */
 
-void printHelp(const char *programName) {
-   printf("Usage:    %s "
+void printHelp() {
+   printf("Usage:    ./qfind "
 #ifndef QSIMPLE
-                         "-v <velocity> "
+                             "-v <velocity> "
 #endif
                                         "-w <width> -s <symmetry> [options...]\n"
           "       or\n"
-          "          %s -l <file> [options...]\n", programName, programName);
+          "          ./qfind -l <file> [options...]\n");
    printf("\n");
    printf("qfind is a program that searches for orthogonal spaceships and waves in Life\n"
           "and related cellular automata.  Options are read left to right, with subsequent\n"
@@ -1817,9 +1817,9 @@ void printHelp(const char *programName) {
 #ifndef QSIMPLE
    printf("\n");
    printf("Example search:\n"
-          "    %s -v c/5 -w 9 -s even -r B3/S23 -t 2\n\n"
+          "    ./qfind -v c/5 -w 9 -s even -r B3/S23 -t 2\n\n"
           "  Searches Life (rule B3/S23) for c/5 orthogonal spaceships with even\n"
-          "  bilateral symmetry and logical width 9 (full width 18) using two threads.\n\n", programName);
+          "  bilateral symmetry and logical width 9 (full width 18) using two threads.\n\n");
 #endif
    exit(0);
 }
@@ -2355,7 +2355,7 @@ void loadState() {
    doCompactPart2();
    
    /* Let the user know that we got this far (suppress if splitting) */
-   if(!splitNum) printf("State successfully loaded from file %s\n",loadFile);
+   if (!splitNum) printf("State successfully loaded from file %s\n",loadFile);
    
    fflush(stdout);
 }
@@ -2576,8 +2576,14 @@ void parseOptions(int argc, char *argv[]) {
    char *optName = 0;
    int c;
    
-   if (argc <= 1)
-      printHelp(argc ? argv[0] : "qfind");
+   if (argc <= 1){
+      printf("\n");
+      printHelp();
+   }
+   printf("Input:");
+   for (c = 1; c < argc; c++)
+      printf(" %s", argv[c]);
+   printf("\n\n");
    
    /* list of long options */
    struct option options[] = {
@@ -2812,7 +2818,7 @@ void parseOptions(int argc, char *argv[]) {
                printError("fixed depth must be positive.");
             break;
          case 256:   /* --help */
-            printHelp(argv[0]);
+            printHelp();
             break;
          case ':':
             optError("missing argument for option ", optName);
@@ -2919,7 +2925,7 @@ void searchSetup() {
       echoParams();
       printf("\n");
       
-      if(!loadDumpFlag || qHead == 0 || splitNum == 1){
+      if (!loadDumpFlag || qHead == 0 || splitNum == 1){
          dumpFlag = DUMPPENDING;
          if (qHead == 0){      /* can't use doCompact() here, because it tries to access rows[-1] */
             qStart = qHead;
@@ -2944,7 +2950,7 @@ void searchSetup() {
       
       /* count nodes in queue */
       for (x = qHead; x < qTail; x++){
-         if(!EMPTY(x)) totalNodes++;
+         if (!EMPTY(x)) totalNodes++;
       }
       
       /* nodes per file is rounded up */
@@ -2986,7 +2992,7 @@ void searchSetup() {
          /* skip the specified number of nonempty nodes */
          i = 0;
          while (i < nodesPerFile && x < fixedQTail){
-            if(!EMPTY(x))
+            if (!EMPTY(x))
                ++i;
             ++x;
             ++j;
@@ -3007,7 +3013,7 @@ void searchSetup() {
          dumpFlag = DUMPPENDING;
          doCompact();
          
-         if(!firstDumpNum) firstDumpNum = dumpNum - 1;
+         if (!firstDumpNum) firstDumpNum = dumpNum - 1;
          
          if (dumpFlag != DUMPSUCCESS){
             printf("Failed to save %s\n",dumpFile);
