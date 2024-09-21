@@ -2509,14 +2509,15 @@ int my_getopt( int argc,
 }
 
 int readInt(char *opt, char *arg) {
-   int c = 0;
+   int i = 0;
+   char c;
    if (arg == 0)
       aborting = 1;
-   else if (!sscanf(arg, "%d", &c)){
+   else if (sscanf(arg, "%d%c", &i, &c) != 1){
       fprintf(stderr, "Error: invalid argument %s in option %s.\n", arg, opt);
       aborting = 1;
    }
-   return c;
+   return i;
 }
 
 const char *parseVelocity(char *velString, int *per, int *off) {
