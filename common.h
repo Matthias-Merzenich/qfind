@@ -26,9 +26,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 13 September 2024"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 21 September 2024"
 
-#define FILEVERSION ((unsigned long) 2024091301)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2024092101)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define MAXDUMPROOT 50     /* maximum allowed length of dump root */
@@ -55,14 +55,15 @@
 #define P_CACHEMEM 13
 #define P_PRINTDEEP 14
 #define P_LONGEST 15
-#define P_LASTDEEP 16
+#define P_FIRSTDEEP 16
 #define P_NUMSHIPS 17
 #define P_MINEXTENSION 18
 #define P_FULLPERIOD 19
 #define P_BOUNDARYSYM 20
 #define P_DUMPINTERVAL 21
+#define P_EVERYDEPTH 22
 
-#define NUM_PARAMS 22U
+#define NUM_PARAMS 23U
 
 #define SYM_UNDEF 0
 #define SYM_ASYM 1
@@ -78,12 +79,12 @@ char *initRows;
 
 int params[NUM_PARAMS];
 int width;
-int deepeningAmount;
 int nRowsInState;                /* Could be replaced with 2*period.  Should be removed. */
 int phase;
 
 int period;
 int offset;
+int lastDeep = 0;
 int numFound = 0;       /* number of spaceships found so far */
 int longest = 0;        /* length of current longest partial result */
 
@@ -1344,6 +1345,7 @@ void dumpState() {
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
    fprintf(fp,"%d\n",mode);
+   fprintf(fp,"%d\n",lastDeep);
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
       fprintf(fp,"1\n");
    else
@@ -1602,19 +1604,22 @@ void process(node theNode);
 int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows);
 
 static void deepen() {
-   node i;
-   
    /* compute amount to deepen, apply reduction if too deep */
-   timeStamp();
-   printf("Queue full");
-   i = currentDepth();
-   if (i >= (unsigned long long)params[P_LASTDEEP]) deepeningAmount = MINDEEP;
-   else deepeningAmount = params[P_LASTDEEP] + MINDEEP - i;   /* go at least MINDEEP deeper */
+   int deepeningAmount;
+   int i = currentDepth();
    
-   params[P_LASTDEEP] = i + deepeningAmount;
+   if (i >= lastDeep) deepeningAmount = MINDEEP;
+   else deepeningAmount = lastDeep + MINDEEP - i;   /* go at least MINDEEP deeper */
    
-   /* start report of what's happening */
-   printf(", depth %ld, deepening %d, ", (long int) i, deepeningAmount);
+   if(params[P_FIRSTDEEP]){
+      deepeningAmount = params[P_FIRSTDEEP];
+      params[P_FIRSTDEEP] = 0;
+   }
+   
+   lastDeep = i + deepeningAmount;
+   
+   /* report what's happening */
+   printf("%d, deepening %d, ", i, deepeningAmount);
    putnum(qTail - qHead);
    printf("/");
    putnum(qTail);
@@ -1633,7 +1638,7 @@ static void deepen() {
       pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRows));
       
       #pragma omp for schedule(dynamic, CHUNK_SIZE)
-      for (j = qHead; j < qTail; ++j) {
+      for (j = qHead; j < qTail; j++) {
          if (!EMPTY(j) && !depthFirst(j, (uint16_t)deepeningAmount, pInd, pRemain, pRows))
             MAKEEMPTY(j);
       }
@@ -1641,8 +1646,6 @@ static void deepen() {
       free(pRemain);
       free(pRows);
    }
-   
-   if (deepeningAmount > period) --deepeningAmount; /* allow for gradual depth reduction */
    
    /* before reporting new queue size, shrink tree back down */
    printf(" -> ");
@@ -1681,10 +1684,19 @@ static void deepen() {
 }
 
 static void breadthFirst() {
-   while (!aborting && !qIsEmpty()) {
-      if (qTail - qHead >= (1LLU<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16 ||
-          qTail >= QSIZE - (deepeningAmount << 2)) deepen();
-      else process(dequeue());
+   while (!aborting && !qIsEmpty()){
+      if (qTail - qHead >= (1LLU<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16){
+         timeStamp();
+         printf("Queue full, depth ");
+         deepen();
+      }
+      else if (params[P_EVERYDEPTH] && qHead == nextRephase){
+         timeStamp();
+         printf("Depth ");
+         deepen();
+      }
+      else
+         process(dequeue());
    }
 }
 
@@ -1760,7 +1772,8 @@ void printHelp(const char *programName) {
    printf("  -f, --found <number>          maximum number of spaceships to output\n");
    printf("  -i, --increment <number>      minimum deepening increment (default: 3)\n");
    printf("  -g, --min-extension <number>  minimum length of saved extensions\n");
-   printf("  -n, --first-depth <number>    depth reached during first deepening step\n");
+   printf("  -n, --first-depth <number>    depth of first deepening step\n");
+   printf("      --fixed-depth <number>    deepen at every new depth by the given amount\n");
    printf("  -e, --extend <filename>       file containing the initial rows for a search.\n"
           "                                Use the Golly script get-rows.lua to easily\n"
           "                                generate the initial rows file.\n");
@@ -1843,7 +1856,11 @@ void echoParams() {
       printf("Dump disabled\n");
    printf("Queue size: 2^%d\n",params[P_QBITS]);
    printf("Hash table size: 2^%d\n",params[P_HASHBITS]);
-   printf("Minimum deepening increment: %d\n",MINDEEP);
+   if (params[P_EVERYDEPTH])
+      printf("Fixed deepening amount: %ld\n",
+               params[P_FIRSTDEEP] ? (long)params[P_FIRSTDEEP] : lastDeep - currentDepth());
+   else
+      printf("Minimum deepening increment: %d\n",MINDEEP);
    if (params[P_PRINTDEEP] == 0) printf("Output disabled while deepening\n");
 #ifndef NOCACHE
    if (params[P_CACHEMEM])
@@ -1931,9 +1948,9 @@ void printError(const char *errorMsg) {
 }
 
 /* Reads and reports values from nttable for a range of conditions.
-** input: a string of birth conditions or a string
-**        of survival conditions (not both)
-**        (e.g., "B34-w6ci" or "S0123")
+** input:  a string of birth conditions or a string
+**         of survival conditions (not both)
+**         (e.g., "B34-w6ci" or "S0123")
 **                                                   
 ** output: the function returns -1 if all input
 **         conditions have value -1 in nttable;
@@ -2204,7 +2221,6 @@ void checkParams() {
 /* ============================ */
 
 int splitNum = 0;
-int newLastDeep = 0;
 char * loadFile;
 
 void loadFail() {
@@ -2227,9 +2243,6 @@ unsigned long loadUInt(FILE *fp) {
 void loadParams() {
    FILE * fp;
    unsigned int i;
-   
-   /* reset flag to prevent modification of params[P_LASTDEEP] at start of search */
-   newLastDeep = 0;
    
    fp = fopen(loadFile, "r");
    if (!fp) loadFail();
@@ -2270,11 +2283,12 @@ void loadState() {
    period         = loadInt(fp);
    offset         = loadInt(fp);
    mode           = (enum Mode)(loadInt(fp));
+   lastDeep       = loadInt(fp);
    dumpNum        = loadInt(fp);
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
       dumpNum = 1;
    
-   deepeningAmount = period; /* Currently redundant, since it's recalculated */
+   
    aborting        = 0;
    nRowsInState    = period+period;   /* how many rows needed to compute successor graph? */
    
@@ -2408,12 +2422,13 @@ void setDefaultParams() {
    params[P_MEMLIMIT] = -1;   /* negative value means no limit */
    params[P_PRINTDEEP] = 1;
    params[P_LONGEST] = 1;
-   params[P_LASTDEEP] = 0;
+   params[P_FIRSTDEEP] = 0;
    params[P_NUMSHIPS] = 0;
    params[P_MINEXTENSION] = 0;
    params[P_FULLPERIOD] = 0;
    params[P_BOUNDARYSYM] = SYM_UNDEF;
    params[P_DUMPMODE] = D_OVERWRITE;
+   params[P_EVERYDEPTH] = 0;
 }
 
 /* =============== */
@@ -2462,7 +2477,7 @@ int my_getopt( int argc,
       /* check if short option is contained in short options list */
       else if (argv[i][1] != '-' && argv[i][2] == '\0' && (charInd = strchr(shortOpts, argv[i][1]))){
          if (*(charInd+1) == ':'){
-            if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
+            if (argc == i+1){  /* no argument */
                if (*(charInd+2) != ':')
                   return (shortOpts[0] == ':' ? ':' : '?');
             }
@@ -2479,7 +2494,7 @@ int my_getopt( int argc,
             longOpts++;
          if (longOpts->name){
             if (longOpts->has_arg){
-               if (argc == i+1 || argv[i+1][0] == '-'){  /* no argument */
+               if (argc == i+1){  /* no argument */
                   if (longOpts->has_arg != optional_argument)
                      return (shortOpts[0] == ':' ? ':' : '?');
                }
@@ -2607,6 +2622,7 @@ void parseOptions(int argc, char *argv[]) {
       {"enable-longest",      no_argument,       261},
       {"disable-longest",     no_argument,       262},
       {"dump-mode",           required_argument, 263},
+      {"fixed-depth",         required_argument, 264},
       {0, 0, 0}   /* marks end of long options list */
    };
    
@@ -2704,8 +2720,9 @@ void parseOptions(int argc, char *argv[]) {
             params[P_MEMLIMIT] = readInt(optName, optArg);
             break;
          case 'n': case 'N':
-            params[P_LASTDEEP] = readInt(optName, optArg);
-            newLastDeep = 1;
+            params[P_FIRSTDEEP] = readInt(optName, optArg);
+            if (params[P_FIRSTDEEP] <= 0)
+               printError("first depth must be positive.");
             break;
          case 'c': case 'C':
             params[P_CACHEMEM] = readInt(optName, optArg);
@@ -2787,6 +2804,13 @@ void parseOptions(int argc, char *argv[]) {
                   break;
             }
             break;
+         case 264:   /* fixed-depth */
+            params[P_EVERYDEPTH] = 1;
+            params[P_MINDEEP] = 1;
+            params[P_FIRSTDEEP] = readInt(optName, optArg);
+            if (params[P_FIRSTDEEP] <= 0)
+               printError("fixed depth must be positive.");
+            break;
          case 256:   /* --help */
             printHelp(argv[0]);
             break;
@@ -2825,7 +2849,6 @@ void searchSetup() {
       width = params[P_WIDTH];
       period = params[P_PERIOD];
       offset = params[P_OFFSET];
-      deepeningAmount = period;
       hashPhase = (gcd(period,offset)>1);
       
       nRowsInState = period+period;
@@ -2879,12 +2902,7 @@ void searchSetup() {
    }
    
    if (params[P_MINEXTENSION] < 0) params[P_MINEXTENSION] = 0;
-   
-   /* correction of params[P_LASTDEEP] after modification */
-   if (newLastDeep){
-      params[P_LASTDEEP] -= MINDEEP;
-      if (params[P_LASTDEEP] < 0) params[P_LASTDEEP] = 0;
-   }
+   if (params[P_FIRSTDEEP] < 0) params[P_FIRSTDEEP] = 0;
    
    dumpMode = params[P_DUMPMODE];   /* these may need to be different when splitting */
    
