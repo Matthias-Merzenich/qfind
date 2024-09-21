@@ -95,11 +95,6 @@ int aborting = 0;       /* A flag to indicate that we are stopping the search.
                         **   2: queue size limit reached
                         **   3: desired number of ships found
                         */
-enum Mode {
-   asymmetric = 1,      /* basic orthogonal pattern; value set to 1 to match SYM_ASYM */
-   odd, even,           /* orthogonal with bilateral symmetry */
-   gutter,              /* orthogonal bilateral symmetry with empty column in middle */
-} mode;
 
 int gutterSkew = 0;     /* number of cells to skew halves in gutter symmetric search */
 
@@ -178,6 +173,9 @@ cacheentry **cache;
 #define FIRSTBASE(i) (((i) & ((1<<BASEBITS) - 1)) == 0)
 
 #define MINDEEP ((params[P_MINDEEP]>0) ? params[P_MINDEEP] : 3)
+
+void optError(const char *errorMsg, const char *opt);
+void printError(const char *errorMsg);
 
 int gcd(int a, int b) {
    if (a > b) return gcd(b,a);
@@ -854,20 +852,6 @@ void bufRow(unsigned long rr, unsigned long r, int shift) {
    bufRLE('$');
 }
 
-int modeWidth() {
-   switch(mode) {
-      case asymmetric:
-         return width;
-      case odd:
-         return 2*width-1;
-      case even:
-         return 2*width;
-      case gutter:
-         return 2*width+1;
-   }
-   return 0;
-}
-
 /* Avoid Intel shift bug */
 static inline unsigned long
 safeShift(unsigned long r, int i) {
@@ -982,12 +966,12 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
             b = PARENT(b);
          }
       }
-      switch(mode) {
-         case asymmetric:
+      switch(params[P_SYMMETRY]) {
+         case SYM_ASYM:
             srows[i] = r;
             break;
 
-         case odd:
+         case SYM_ODD:
             srows[i] = r << (MAXWIDTH - 1);
             ssrows[i] = r >> (32 - (MAXWIDTH - 1));
             for (j = 1; j < MAXWIDTH; j++)
@@ -995,7 +979,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
                   srows[i] |= 1 << (MAXWIDTH - 1 - j);
             break;
 
-         case even:
+         case SYM_EVEN:
             srows[i] = r << MAXWIDTH;
             ssrows[i] = r >> (32 - MAXWIDTH);
             for (j = 0; j < MAXWIDTH; j++)
@@ -1003,7 +987,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
                   srows[i] |= 1 << (MAXWIDTH - 1 - j);
             break;
 
-         case gutter:
+         case SYM_GUTTER:
             srows[i] = r << (MAXWIDTH + 1);
             ssrows[i] = r >> (32 - (MAXWIDTH + 1));
             for (j = 0; j < MAXWIDTH; j++)
@@ -1012,8 +996,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
             break;
 
          default:
-            printf("Unexpected mode in success!\n");
-            aborting = 1;
+            printError("unexpected symmetry type in success()");
             return 0;
       }
    }
@@ -1344,7 +1327,6 @@ void dumpState() {
    fprintf(fp,"%d\n",width);
    fprintf(fp,"%d\n",period);
    fprintf(fp,"%d\n",offset);
-   fprintf(fp,"%d\n",mode);
    fprintf(fp,"%d\n",lastDeep);
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
       fprintf(fp,"1\n");
@@ -2198,7 +2180,6 @@ void checkParams() {
       fprintf(stderr, "Warning: the wave symmetry settings are equivalent to a spaceship search.\n");
       params[P_SYMMETRY] = params[P_BOUNDARYSYM];
       params[P_BOUNDARYSYM] = SYM_UNDEF;
-      mode = (enum Mode)params[P_SYMMETRY];
    }
    /* Reduce values to prevent integer overflow */
    if (params[P_QBITS] > 31 && !aborting){
@@ -2282,7 +2263,6 @@ void loadState() {
    width          = loadInt(fp);
    period         = loadInt(fp);
    offset         = loadInt(fp);
-   mode           = (enum Mode)(loadInt(fp));
    lastDeep       = loadInt(fp);
    dumpNum        = loadInt(fp);
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
@@ -2694,13 +2674,13 @@ void parseOptions(int argc, char *argv[]) {
          case 's': case 'S':
             switch(optArg[0]) {
                case 'a': case 'A':
-                  params[P_SYMMETRY] = SYM_ASYM; mode = asymmetric; break;
+                  params[P_SYMMETRY] = SYM_ASYM; break;
                case 'o': case 'O':
-                  params[P_SYMMETRY] = SYM_ODD; mode = odd; break;
+                  params[P_SYMMETRY] = SYM_ODD; break;
                case 'e': case 'E':
-                  params[P_SYMMETRY] = SYM_EVEN; mode = even; break;
+                  params[P_SYMMETRY] = SYM_EVEN; break;
                case 'g': case 'G':
-                  params[P_SYMMETRY] = SYM_GUTTER; mode = gutter; break;
+                  params[P_SYMMETRY] = SYM_GUTTER; break;
                default:
                   optError("unrecognized symmetry type ", optArg);
                   break;
