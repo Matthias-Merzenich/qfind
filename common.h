@@ -1241,7 +1241,7 @@ void resetQ() {
 
 int dumpNum = 1;
 char dumpFile[256];
-const char *dumpRoot = "dump-@-";
+const char *dumpRoot = "dump-@time-";
 char loadDumpRoot[251];    /* used for loading dump root from file */
 char trueDumpRoot[251];
 time_t lastDumpTime;
@@ -1264,28 +1264,28 @@ void parseDumpRoot() {
    const char *s;
    memset(trueDumpRoot, '\0', 251);
    
-   /* replace '@' with hex timestamp */
-   if ((s = strchr(dumpRoot, '@'))){
+   /* replace first "@time" with hex timestamp */
+   if ((s = strstr(dumpRoot, "@time"))){
       memcpy(tempStr, dumpRoot, s - dumpRoot);
-      sprintf(trueDumpRoot, "%s%06lx%s", tempStr, time(NULL) & 0xffffff, s+1);
+      sprintf(trueDumpRoot, "%s%06lx%s", tempStr, time(NULL) & 0xffffff, s+5);
    }
    else
       memcpy(trueDumpRoot, dumpRoot, MAXDUMPROOT + 9);
    
-   /* replace '^' with rule string ('/' replaced with '_') */
+   /* replace first "@rule" with rule string ('/' replaced with '_') */
    memcpy(tempStr, trueDumpRoot, MAXDUMPROOT + 9);
-   if ((t = strchr(tempStr, '^'))){
+   if ((t = strstr(tempStr, "@rule"))){
       memcpy(tempRule, rule, 150);
       r = strchr(tempRule, '/');
       *r = '_';
       *t = '\0';
-      sprintf(trueDumpRoot, "%s%s%s", tempStr, tempRule, t+1);
+      sprintf(trueDumpRoot, "%s%s%s", tempStr, tempRule, t+5);
    }
    
-   /* replace additional occurrences of '@' and '^' with '_' */
+   /* replace additional occurrences of '@' with '_' */
    r = trueDumpRoot - 1;
    while (*(++r) != '\0')
-      if (*r == '@' || *r == '^')
+      if (*r == '@')
          *r = '_';
    
    dumpRoot = trueDumpRoot;
