@@ -2088,7 +2088,7 @@ void checkGutter() {
    while (i < 256 && nttable[i] != -1)
       i++;
    
-   if (checkConditions("B2ce4ci6i") <= 0)
+   if (checkConditions("B2ci4ci6i") <= 0)
       gutterSkew = 0;
    else if (checkConditions("B1c2kn3ny4yz5r6i") <= 0)
       gutterSkew = 1;
