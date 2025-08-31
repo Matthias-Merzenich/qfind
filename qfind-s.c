@@ -164,7 +164,7 @@ void process(node theNode)
    if (theNode == 0){
       firstRow = 1;
    }
-   else if (deepIndex > 1){  /* This means we found an extension previously */
+   else if (deepIndex > 1){  /* This means we have a saved extension for this node */
       
       /* Sanity check: do the extension rows match the node rows? */
       node y = theNode;
@@ -198,7 +198,9 @@ void process(node theNode)
                deepRowIndices[deepQTail - 1] = 0;
             }
          }
-         
+         else     /* flag extension for elimination if it produces a previously seen node */
+            deepRows[deepIndex][1] = deepRows[deepIndex][0] + 1;  /* extension will be eliminated by subsequent length check */
+
          /* eliminate extension if it gets too short */
          if (deepRows[deepIndex][1] > deepRows[deepIndex][0]){
             free(deepRows[deepIndex]);
@@ -264,9 +266,14 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
    
    /* Reload state if we have a previous extension */
    if (theDeepIndex > 1){
+      row *theDeepRows;
+      #pragma omp critical(findDeepIndex)
+      {
+         theDeepRows = deepRows[theDeepIndex];
+      }
       if (reloadDepthFirst( startRow,
                            howDeep,
-                           deepRows[theDeepIndex],
+                           theDeepRows,
                            pInd,
                            pRemain,
                            pRows ))
@@ -277,7 +284,7 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       /* Sanity check: do the extension rows match the node rows? */
       node y = theNode;
       for (i = 0; i < 2*PERIOD; ++i){
-         if (deepRows[theDeepIndex][deepRows[theDeepIndex][1] + 1 - i] != ROW(y)){
+         if (theDeepRows[theDeepRows[1] + 1 - i] != ROW(y)){
             fprintf(stderr, "Warning: non-matching rows detected at node %u in depthFirst()\n",theNode);
             matchFlag = 0;
             break;
@@ -286,9 +293,9 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       }
       
       if (matchFlag){
-         currRow = startRow   + deepRows[theDeepIndex][0]
-                              - deepRows[theDeepIndex][1]
-                              + 1;
+         currRow = startRow   + theDeepRows[0]
+                              - theDeepRows[1]
+                             + 1;
          
          #pragma omp critical(findDeepIndex)
          {

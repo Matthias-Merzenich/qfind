@@ -26,9 +26,9 @@
 #define STR(x) #x
 #define XSTR(x) STR(x)
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 21 September 2024"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 31 August 2025"
 
-#define FILEVERSION ((unsigned long) 2024092101)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2025083101)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define MAXDUMPROOT 50     /* maximum allowed length of dump root */
@@ -120,7 +120,7 @@ uint16_t *gRows;
 long long memusage = 0;
 long long memlimit = 0;
 
-row **deepRows;
+row **deepRows = 0;
 uint32_t *deepRowIndices;
 uint32_t deepQHead, deepQTail, oldDeepQHead;
 
@@ -1478,7 +1478,7 @@ void doCompactPart2() {
    }
    rephase();
    
-   /* Repack and respace depth-first extension queue to match node queue */
+   /* Repack nonzero depth-first extension indices to the end of the queue */
    j = QSIZE - 1;
    for (i = QSIZE; i > 0; --i){
       if (deepRowIndices[i - 1]){
@@ -1494,6 +1494,7 @@ void doCompactPart2() {
       exit(1);
    }
    
+   /* Respace depth-first extension queue to match node queue */
    i = 0;
    j = 0;
    while (!deepRowIndices[j] && j < QSIZE) ++j;
@@ -1687,7 +1688,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
    #pragma omp critical(findDeepIndex)
    {
       theDeepIndex = 2;
-      while (deepRows[theDeepIndex] && theDeepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1)) ++theDeepIndex;
+      while (theDeepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1) && deepRows[theDeepIndex]) ++theDeepIndex;
       if (theDeepIndex == 1LLU << (params[P_DEPTHLIMIT] + 1)){
          fprintf(stderr,"Error: no available extension indices.\n");
          aborting = 1;
