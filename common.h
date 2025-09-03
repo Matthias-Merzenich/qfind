@@ -1644,7 +1644,7 @@ static void deepen() {
    fflush(stdout);
    
    /* signal time for dump */
-   if (params[P_DUMPMODE] != D_DISABLED && time(NULL) - lastDumpTime > params[P_DUMPINTERVAL]){
+   if (params[P_DUMPMODE] != D_DISABLED && time(NULL) - lastDumpTime >= params[P_DUMPINTERVAL]){
       dumpFlag = DUMPPENDING;
       time(&lastDumpTime);
    }
