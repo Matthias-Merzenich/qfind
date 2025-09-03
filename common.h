@@ -1980,7 +1980,7 @@ int checkConditions(const char *p) {
       else if (*p == '-'){
          p++;
          for (i = 0; i < 256; i++)
-            tempTab[256] = 0;
+            tempTab[i] = 0;
          for (; *p != '\0' && !('0' <= *p && *p <= '8'); p++){
             for (i = 1; i < 256; i++)
                if (rulekeys[i][0] == dig && *p != rulekeys[i][1])
