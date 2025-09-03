@@ -9,6 +9,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #ifdef _OPENMP
    #include <omp.h>
@@ -25,15 +26,16 @@
 
 #define STR(x) #x
 #define XSTR(x) STR(x)
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 31 August 2025"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 3 September 2025"
 
-#define FILEVERSION ((unsigned long) 2025083101)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2025090301)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define MAXDUMPROOT 50     /* maximum allowed length of dump root */
 #define DUMPLIMIT 100000   /* maximum allowed number of sequential dumps */
-#define CHUNK_SIZE 64
+#define CHUNK_SIZE 1
 #define QBITS 20
 #define HASHBITS 20
 #define DEFAULT_DEPTHLIMIT (qBits-3)
@@ -62,8 +64,9 @@
 #define P_BOUNDARYSYM 20
 #define P_DUMPINTERVAL 21
 #define P_EVERYDEPTH 22
+#define P_EARLYEXIT 23
 
-#define NUM_PARAMS 23U
+#define NUM_PARAMS 24U
 
 #define SYM_UNDEF 0
 #define SYM_ASYM 1
@@ -1584,7 +1587,7 @@ void setkey(int h, int v) {
 /* ========================== */
 
 void process(node theNode);
-int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows);
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit);
 
 static void deepen() {
    /* compute amount to deepen, apply reduction if too deep */
@@ -1608,10 +1611,14 @@ static void deepen() {
    putnum(qTail);
    fflush(stdout);
    
+   _Atomic int remainingItems = 0;
+   _Atomic int forceExit = 0;
+   atomic_store_explicit(&remainingItems, qTail - qHead, memory_order_seq_cst);
+   atomic_store_explicit(&forceExit, 0, memory_order_seq_cst);
+
    /* go through queue, deepening each one */
    #pragma omp parallel
    {
-      node j;
       uint16_t **pInd;
       int *pRemain;
       row *pRows;
@@ -1620,10 +1627,12 @@ static void deepen() {
       pRemain = (int*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRemain));
       pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRows));
       
+      long long j;
       #pragma omp for schedule(dynamic, CHUNK_SIZE)
       for (j = qHead; j < qTail; j++) {
-         if (!EMPTY(j) && !depthFirst(j, (uint16_t)deepeningAmount, pInd, pRemain, pRows))
+         if (!EMPTY(j) && !depthFirst((node)j, (uint16_t)deepeningAmount, pInd, pRemain, pRows, &remainingItems, &forceExit))
             MAKEEMPTY(j);
+         atomic_fetch_sub_explicit(&remainingItems, 1, memory_order_relaxed);
       }
       free(pInd);
       free(pRemain);
@@ -1760,6 +1769,11 @@ void printHelp() {
    printf("  -e, --extend <filename>       file containing the initial rows for a search.\n"
           "                                Use the Golly script get-rows.lua to easily\n"
           "                                generate the initial rows file.\n");
+#ifdef _OPENMP
+   printf("  (--enable-early-exit|--disable-early-exit)\n"
+          "                                enable/disable early exit during deepening step\n"
+          "                                when threads become idle (default: enabled)\n");
+#endif
    printf("\n");
    printf("Memory options:\n");
    printf("  -c, --cache-mem <number>      allocate N megabytes per thread for lookahead\n"
@@ -1776,7 +1790,8 @@ void printHelp() {
    printf("Save/load options:\n");
    printf("  -d, --dump-root <string>      dump filename prefix\n");
    printf("  -a, --dump-interval <number>  wait at least N seconds between dumps\n");
-   printf("      --dump-mode <(overwrite|sequential|disabled)>  set dump mode\n");
+   printf("      --dump-mode <(overwrite|sequential|disabled)>\n"
+          "                                set dump mode\n");
    printf("  -l, --load <filename>         load search state from the given dump file\n");
    printf("  -j, --split <number>          split loaded search state into at most N files\n");
    printf("  -p, --preview                 preview partial results from the loaded state\n");
@@ -2410,6 +2425,7 @@ void setDefaultParams() {
    params[P_BOUNDARYSYM] = SYM_UNDEF;
    params[P_DUMPMODE] = D_OVERWRITE;
    params[P_EVERYDEPTH] = 0;
+   params[P_EARLYEXIT] = 1;
 }
 
 /* =============== */
@@ -2611,6 +2627,10 @@ void parseOptions(int argc, char *argv[]) {
       {"disable-longest",     no_argument,       262},
       {"dump-mode",           required_argument, 263},
       {"fixed-depth",         required_argument, 264},
+#ifdef _OPENMP
+      {"enable-early-exit",   no_argument,       265},
+      {"disable-early-exit",  no_argument,       266},
+#endif
       {0, 0, 0}   /* marks end of long options list */
    };
    
@@ -2624,7 +2644,7 @@ void parseOptions(int argc, char *argv[]) {
                            "t:T:"
 #endif
                            "a:b:c:d:e:f:g:h:i:j:l:m:n:o:pq:r:s:w:z"     /* Currently unused: */
-                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:Z",    /* a,u,x,y,A,U,X,Y   */
+                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:Z",    /* u,x,y,U,X,Y       */
                            options,
                            &optName,
                            &optArg)) != -1 )
@@ -2792,12 +2812,18 @@ void parseOptions(int argc, char *argv[]) {
                   break;
             }
             break;
-         case 264:   /* fixed-depth */
+         case 264:   /* --fixed-depth */
             params[P_EVERYDEPTH] = 1;
             params[P_MINDEEP] = 1;
             params[P_FIRSTDEEP] = readInt(optName, optArg);
             if (params[P_FIRSTDEEP] <= 0)
                printError("fixed depth must be positive.");
+            break;
+         case 265:   /* --enable-early-exit */
+            params[P_EARLYEXIT] = 1;
+            break;
+         case 266:   /* --disable-early-exit */
+            params[P_EARLYEXIT] = 0;
             break;
          case 256:   /* --help */
             printHelp();

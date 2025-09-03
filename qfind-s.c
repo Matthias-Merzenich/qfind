@@ -251,12 +251,10 @@ int reloadDepthFirst(uint16_t startRow, uint16_t howDeep, row *pRows, uint16_t *
    return 0;
 }
 
-int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows){
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit){
    node x = theNode;
    uint32_t startRow = 2*PERIOD + 1;
    uint32_t currRow = startRow;
-   uint32_t theDeepIndex = deepRowIndices[deepQHead + theNode - qHead];
-   int matchFlag = 1;
    
    int i;
    for (i = currRow - 1; i >= 0; --i){
@@ -265,6 +263,8 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
    }
    
    /* Reload state if we have a previous extension */
+   int matchFlag = 1;
+   uint32_t theDeepIndex = deepRowIndices[deepQHead + theNode - qHead];
    if (theDeepIndex > 1){
       row *theDeepRows;
       #pragma omp critical(findDeepIndex)
@@ -313,6 +313,7 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
                   &(pInd[currRow]), &(pRemain[currRow]));
    pInd[currRow] += pRemain[currRow];
    
+   int earlyExit = MIN(params[P_NUMTHREADS], (int) (qTail - qHead)/4);
    for (;;){
       /* back up if there are no rows left to check at this depth */
       if (!pRemain[currRow]){
@@ -326,6 +327,18 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       if (!lookAhead(pRows, currRow)) continue;
 
       ++currRow;
+
+      /* Test for early exit conditions */
+      if ( atomic_load_explicit(forceExit, memory_order_relaxed) ||
+           (params[P_EARLYEXIT] && atomic_load_explicit(remainingItems, memory_order_relaxed) < earlyExit) )
+         {
+         deepRowIndices[deepQHead + theNode - qHead] = 1;   /* flag as success without saving extension rows */
+         int earlyExitHowDeep = currRow - startRow - 1;
+         if (earlyExitHowDeep >= params[P_MINEXTENSION])
+            saveDepthFirst(theNode, startRow, earlyExitHowDeep, pRows);
+         return 1;
+      }
+
       /* Check if we reached the desired depth. If so,  
          check if the result is a complete spaceship */
       if (currRow > startRow + howDeep){
@@ -351,6 +364,8 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
          {
             success(theNode, pRows, startRow - 1, currRow + PERIOD - 1);
          }
+         if (aborting)
+            atomic_store_explicit(forceExit, 1, memory_order_seq_cst);
          return 1;
       }
       
