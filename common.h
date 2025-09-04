@@ -958,7 +958,7 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    
    for (i = 0; i <= nrows+MAXWIDTH; i++) srows[i]=ssrows[i]=0;
    for (i = nrows - 1; i >= 0; i--) {
-      row r;
+      uint32_t r;
       if (nDeepRows > 0){
          r = pRows[currRow];
          currRow -= period;
@@ -1022,7 +1022,11 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
          break;
       }
    }
-   if (allEmpty) return 0;
+   if (allEmpty){
+      free(patternBuf);
+      patternBuf = NULL;
+      return 0;
+   }
    
    /* make at least one row have nonzero first bit */
    i = 0;
