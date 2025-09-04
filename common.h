@@ -15,6 +15,7 @@
    #include <omp.h>
 #else
    #define omp_get_thread_num() 0
+   #define omp_get_num_procs() 2
    #define omp_set_num_threads(x)
 #endif
 
@@ -28,16 +29,16 @@
 #define XSTR(x) STR(x)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 3 September 2025"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 4 September 2025"
 
-#define FILEVERSION ((unsigned long) 2025090301)  /* yyyymmddnn */
+#define FILEVERSION ((unsigned long) 2025090401)  /* yyyymmddnn */
 
 #define MAXPERIOD 30
 #define MAXDUMPROOT 50     /* maximum allowed length of dump root */
 #define DUMPLIMIT 100000   /* maximum allowed number of sequential dumps */
 #define CHUNK_SIZE 1
-#define QBITS 20
-#define HASHBITS 20
+#define QBITS 15
+#define HASHBITS 15
 #define DEFAULT_DEPTHLIMIT (qBits-3)
 #define DEFAULT_CACHEMEM 32
 
@@ -1765,7 +1766,8 @@ void printHelp() {
           "                                searches in B3/S23 for ships that never contain\n"
           "                                the B6c, B7, or S8 neighborhoods.\n");
 #ifdef _OPENMP
-   printf("  -t, --threads <number>        number of threads during deepening (default: 1)\n");
+   printf("  -t, --threads <number>        number of threads during deepening.  Default is\n"
+          "                                one less than the number of available cores.\n");
 #endif
    printf("  -f, --found <number>          maximum number of spaceships to output\n");
    printf("  -i, --increment <number>      minimum deepening increment (default: 3)\n");
@@ -2418,7 +2420,7 @@ void setDefaultParams() {
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
-   params[P_NUMTHREADS] = 1;
+   params[P_NUMTHREADS] = omp_get_num_procs() - 1;
    params[P_MINDEEP] = 3;
    /* A negative value for params[P_CACHEMEM] means use that amount of  */
    /* memory if speed > c/5 and turn off caching otherwise.  A positive */
