@@ -1242,6 +1242,7 @@ void resetQ() {
 /*  Dump search state  */
 /* =================== */
 
+int splitNum = 0;
 int dumpNum = 1;
 char dumpFile[256];
 const char *dumpRoot = "dump-@time-";
@@ -1324,7 +1325,10 @@ void dumpState() {
    if (!(fp = openDumpFile())) return;
    fprintf(fp,"%lu\n",FILEVERSION);
    fprintf(fp,"%s\n",rule);
-   fprintf(fp,"%s\n",dumpRoot);
+   if (splitNum > 1)    /* append dumpNum to new dumpRoot when splitting search state */
+      fprintf(fp,"%s%05d-\n",dumpRoot,dumpNum-1);
+   else
+      fprintf(fp,"%s\n",dumpRoot);
    for (j = 0; j < NUM_PARAMS; ++j)
       fprintf(fp,"%d\n",params[j]);
    fprintf(fp,"%d\n",width);
@@ -1669,6 +1673,8 @@ static void deepen() {
    else if (dumpFlag == DUMPFAILURE) {
       timeStamp();
       printf("State dump unsuccessful\n");
+      if (dumpMode == D_OVERWRITE)
+         dumpNum--;   /* reset dumpNum so that the next dump doesn't overwrite our "backup" */
    }
    dumpFlag = DUMPRESET;
    
@@ -2217,7 +2223,6 @@ void checkParams() {
 /*  Load saved state from file  */
 /* ============================ */
 
-int splitNum = 0;
 char * loadFile;
 
 void loadFail() {
@@ -2270,17 +2275,21 @@ void loadState() {
    if (!fp) loadFail();
    
    /* Skip lines that are loaded in loadParams() */
-   loadUInt(fp);                                   /* skip file version */
-   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();   /* skip rule */
-   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();   /* skip dump root */
-   for (i = 0; i < NUM_PARAMS; ++i) loadInt(fp);   /* skip parameters */
+   loadUInt(fp);                                      /* skip file version */
+   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();      /* skip rule */
+   if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();      /* skip dump root */
+   for (i = 0; i < NUM_PARAMS; ++i) loadInt(fp);      /* skip parameters */
    
    /* Load / initialise globals */
    width          = loadInt(fp);
    period         = loadInt(fp);
    offset         = loadInt(fp);
    lastDeep       = loadInt(fp);
-   dumpNum        = loadInt(fp);
+   if (!splitNum)
+      dumpNum     = loadInt(fp);
+   else {
+      if (fscanf(fp, "%*[^\n]\n") != 0) loadFail();   /* skip dumpNum when splitting loaded state */
+   }
    if (params[P_DUMPMODE] == D_SEQUENTIAL)
       dumpNum = 1;
    
@@ -2922,11 +2931,7 @@ void searchSetup() {
    
    /* split queue across multiple files */
    if (splitNum > 0){
-      node x;
       uint32_t i,j;
-      uint32_t deepIndex;
-      int firstDumpNum = 0;
-      int totalNodes = 0;
       
       dumpMode = D_SEQUENTIAL; 
       
@@ -2951,12 +2956,19 @@ void searchSetup() {
          }
       }
       
+      if (strlen(dumpRoot) > 244){
+         fprintf(stderr, "Error: dump root too long.\n");
+         exit(1);
+      }
+      
       if (splitNum >= 100000){
          fprintf(stderr, "Warning: queue cannot be split into more than 99999 files.\n");
          splitNum = 99999;
       }
       
       /* count nodes in queue */
+      int totalNodes = 0;
+      node x;
       for (x = qHead; x < qTail; x++){
          if (!EMPTY(x)) totalNodes++;
       }
@@ -2975,6 +2987,7 @@ void searchSetup() {
       free(rows);
       free(hash);
       
+      uint32_t deepIndex;
       for (deepIndex = 0; deepIndex < 1LLU << (params[P_DEPTHLIMIT] + 1); ++deepIndex){
          if (deepRows[deepIndex]) free(deepRows[deepIndex]);
          deepRows[deepIndex] = 0;
@@ -2984,6 +2997,8 @@ void searchSetup() {
       
       node currNode = fixedQHead;
       
+      dumpNum = 1;   /* reset dumpNum prior to splitting */
+      int firstDumpNum = 0;
       while (currNode < fixedQTail){
          
          /* load the queue */
@@ -2997,7 +3012,7 @@ void searchSetup() {
             ++j;
          }
          
-         /* skip the specified number of nonempty nodes */
+         /* retain the specified number of nonempty nodes */
          i = 0;
          while (i < nodesPerFile && x < fixedQTail){
             if (!EMPTY(x))
@@ -3016,7 +3031,7 @@ void searchSetup() {
             ++x;
             ++j;
          }
-         
+
          /* save the piece */
          dumpFlag = DUMPPENDING;
          doCompact();
