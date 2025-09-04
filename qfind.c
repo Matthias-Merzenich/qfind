@@ -11,7 +11,7 @@
 
 int fwdOff[MAXPERIOD], backOff[MAXPERIOD], doubleOff[MAXPERIOD], tripleOff[MAXPERIOD];
 
-void makePhases(){
+void makePhases(void){
    int i;
    for (i = 0; i < period; i++) backOff[i] = -1;
    i = 0;
@@ -152,7 +152,7 @@ void makeEqRows(int maxFactor, int divNum){
 }
 
 /* make phase tables for determining equivalent subperiodic rows */
-void makeSubperiodTables(){
+void makeSubperiodTables(void){
    if (gcd(period,offset) > 1){
       int div1 = smallestDivisor(gcd(period,offset));
       makeEqRows(period / div1,0);

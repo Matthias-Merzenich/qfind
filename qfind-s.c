@@ -69,7 +69,9 @@ int lookAhead(row *pRows, int a){
    uint16_t *riStart11, *riStart12, *riStart13, *riStart22, *riStart23;
    int numRows11, numRows12, numRows13, numRows22, numRows23;
    int row11, row12, row13, row22, row23;
+#ifndef NOCACHE
    int k;
+#endif
    
    getoffsetcount(pRows[a - PERIOD - OFFSET],
                   pRows[a - OFFSET],

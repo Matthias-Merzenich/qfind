@@ -193,7 +193,7 @@ int gcd(int a, int b) {
 
 static char timeStr[20] = "00/00/00 00:00:00 ";
 
-static void timeStamp() {
+static void timeStamp(void) {
    time_t t;
    
    time(&t);
@@ -342,7 +342,7 @@ int slowEvolveBit(int row1, int row2, int row3, int bshift) {
                 |  ((row1>>bshift) & 1)<<0];
 }
 
-void fasterTable() {
+void fasterTable(void) {
    int p = 0;
    for (int row1=0; row1<8; row1++)
       for (int row2=0; row2<8; row2++)
@@ -526,9 +526,9 @@ row *flip;
 int *gWorkConcat;       /* gWorkConcat to be parceled out between threads */
 int *rowHash;
 uint16_t *valorder;
-void genStatCounts();
+void genStatCounts(void);
 
-void makeFlip() {
+void makeFlip(void) {
 	row theRow;
 	int i;
 	for (theRow = 0; theRow < (1<<width); theRow++) {
@@ -540,7 +540,7 @@ void makeFlip() {
 	}
 }
 
-void makeTables() {
+void makeTables(void) {
    flip = (row*)malloc(sizeof(*flip)<<width);
    makeFlip();
    causesBirth = (unsigned char*)malloc(sizeof(*causesBirth)<<width);
@@ -696,7 +696,7 @@ uint16_t *makeRow(int row1, int row2) {
 **   and row3 were bb, cc, and dd, respectively.  We have to manage
 **   the edge conditions appropriately.
 */
-void genStatCounts() {
+void genStatCounts(void) {
    int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width);
    for (int i=0; i<128<<width; i++)
       cnt[i] = 0;
@@ -747,7 +747,7 @@ void genStatCounts() {
 /*  Hash table for detecting equivalent partial patterns  */
 /* ====================================================== */
 
-void resetHash() {
+void resetHash(void) {
    if (hash != 0) memset(hash,0,4*HASHSIZE);
 }
 
@@ -1143,7 +1143,7 @@ node qEnd;   /* index of first unused node after end of queue */
 int queuePhase = 0;
 node nextRephase = 0;
 
-void rephase() {
+void rephase(void) {
    node x, y;
    while (qHead < qTail && EMPTY(qHead)) qHead++;   /* skip empty queue cells */
    x = qHead;   /* find next item in queue */
@@ -1171,7 +1171,7 @@ int peekPhase(node i) {
 }
 
 /* Test queue status */
-static inline int qIsEmpty() {
+static inline int qIsEmpty(void) {
    while (qHead < qTail && EMPTY(qHead)){
       ++qHead;
       ++deepQHead;
@@ -1179,7 +1179,7 @@ static inline int qIsEmpty() {
    return (qTail == qHead);
 }
 
-void qFull() {
+void qFull(void) {
     if (aborting != 2) {
       printf("Exceeded %lu node limit, search aborted\n", QSIZE);
       fflush(stdout);
@@ -1212,7 +1212,7 @@ static inline void enqueue(node b, row r) {
    deepRowIndices[deepQTail] = 0;
 }
 
-static inline node dequeue() {
+static inline node dequeue(void) {
    oldDeepQHead = deepQHead;  /* Save old parallel queue head for use in process() */
    while (qHead < qTail && EMPTY(qHead)){
       ++qHead;
@@ -1228,12 +1228,12 @@ static inline node dequeue() {
 }
 
 /* Not used, but could be useful in debugging */
-static inline void pop() {
+static inline void pop(void) {
    qTail--;
    while (qTail > qHead && EMPTY(qTail-1)) qTail--;
 }
 
-void resetQ() {
+void resetQ(void) {
    qHead = qTail = 0; deepQHead = deepQTail = 0;
 }
 
@@ -1262,7 +1262,7 @@ int dumpMode;  /* separate from params[P_DUMPMODE] for splitting */
 #define D_OVERWRITE  (1)
 #define D_SEQUENTIAL (2)
 
-void parseDumpRoot() {
+void parseDumpRoot(void) {
    char tempStr[MAXDUMPROOT + 10]  = {'\0'};
    char tempRule[151] = {'\0'};
    char *r, *t;
@@ -1296,7 +1296,7 @@ void parseDumpRoot() {
    dumpRoot = trueDumpRoot;
 }
 
-FILE * openDumpFile() {
+FILE * openDumpFile(void) {
    FILE * fp;
    
    if (dumpMode == D_OVERWRITE) {
@@ -1319,7 +1319,7 @@ FILE * openDumpFile() {
    return (FILE *) 0;
 }
 
-void dumpState() {
+void dumpState(void) {
    FILE * fp;
    unsigned long long i,j;
    dumpFlag = DUMPFAILURE;
@@ -1390,7 +1390,7 @@ void putnum(long unsigned n) {
    putchar(suffix);
 }
 
-long currentDepth() {
+long currentDepth(void) {
    long i;
    node x;
    x = qTail - 1;
@@ -1407,7 +1407,7 @@ long currentDepth() {
 ** converts parent bits back to parent pointers.  The search
 ** state may be saved in between.
 */
-void doCompactPart1() {
+void doCompactPart1(void) {
    node x,y;
    qEnd = qTail;
    
@@ -1460,7 +1460,7 @@ void doCompactPart1() {
    qStart = ++x;     /* mark start of queue */
 }
 
-void doCompactPart2() {
+void doCompactPart2(void) {
    node x,y;
    uint32_t i, j;
    int k;
@@ -1540,7 +1540,7 @@ void doCompactPart2() {
    deepQTail = qTail - qHead;
 }
 
-void doCompact() {
+void doCompact(void) {
    /* make sure we still have something left in the queue */
    if (qIsEmpty()) {
       qTail = qHead = 0;   /* nothing left, make an extremely compact queue */
@@ -1594,7 +1594,7 @@ void setkey(int h, int v) {
 void process(node theNode);
 int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit);
 
-static void deepen() {
+static void deepen(void) {
    /* compute amount to deepen, apply reduction if too deep */
    int deepeningAmount;
    int i = currentDepth();
@@ -1682,7 +1682,7 @@ static void deepen() {
    fflush(stdout);
 }
 
-static void breadthFirst() {
+static void breadthFirst(void) {
    while (!aborting && !qIsEmpty()){
       if (qTail - qHead >= (1LLU<<params[P_DEPTHLIMIT]) || qTail >= QSIZE - QSIZE/16){
          timeStamp();
@@ -1730,7 +1730,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
 /*  Print usage instructions  */
 /* ========================== */
 
-void printHelp() {
+void printHelp(void) {
    printf("Usage:    ./qfind "
 #ifndef QSIMPLE
                              "-v <velocity> "
@@ -1834,7 +1834,7 @@ void printHelp() {
 /*  Echo loaded parameters  */
 /* ======================== */
 
-void echoParams() {
+void echoParams(void) {
    printf("\n");
    printf("Rule: %s\n",rule);
    printf("speed: ");
@@ -1887,7 +1887,7 @@ void echoParams() {
 /*  Preview partial results  */
 /* ========================= */
 
-static void preview(/*int allPhases*/) {
+static void preview(void /*int allPhases*/) {
    node i,j;
    row *pRows;
    // int ph;  /* used for allPhases option */
@@ -2020,7 +2020,7 @@ int checkConditions(const char *p) {
    return val;
 }
 
-void checkRule() {
+void checkRule(void) {
    /* Errors: no meaningful results possible */
    if (checkConditions("B0") == 1)
       printError("rules with B0 are not supported.");
@@ -2106,7 +2106,7 @@ void checkRule() {
    }
 }
 
-void checkGutter() {
+void checkGutter(void) {
    int i = 0;
    /* if there are forbidden birth conditions, i will be less than 256 */
    while (i < 256 && nttable[i] != -1)
@@ -2129,7 +2129,7 @@ void checkGutter() {
       fprintf(stderr, "Warning: forbidden birth conditions cannot be checked along a skew gutter.\n");
 }
 
-void checkParams() {
+void checkParams(void) {
    const char *ruleError;
    
    /* Errors */
@@ -2227,7 +2227,7 @@ void checkParams() {
 
 char * loadFile;
 
-void loadFail() {
+void loadFail(void) {
    fprintf(stderr, "Load from file %s failed\n", loadFile);
    exit(1);
 }
@@ -2244,7 +2244,7 @@ unsigned long loadUInt(FILE *fp) {
    return v;
 }
 
-void loadParams() {
+void loadParams(void) {
    FILE * fp;
    unsigned int i;
    
@@ -2268,7 +2268,7 @@ void loadParams() {
       params[i] = loadInt(fp);
 }
 
-void loadState() {
+void loadState(void) {
    FILE * fp;
    unsigned long i, j;
    int k;
@@ -2405,7 +2405,7 @@ void loadInitRows(char * file) {
 /*  Set Defaults  */
 /* ============== */
 
-void setDefaultParams() {
+void setDefaultParams(void) {
 #ifdef QSIMPLE
    params[P_PERIOD] = PERIOD;
    params[P_OFFSET] = OFFSET;
@@ -2856,7 +2856,7 @@ void parseOptions(int argc, char *argv[]) {
 /*  Set up search with the given parameters  */
 /* ========================================= */
 
-void searchSetup() {
+void searchSetup(void) {
    if (params[P_CACHEMEM] < 0){
       if (5 * params[P_OFFSET] > params[P_PERIOD]) params[P_CACHEMEM] *= -1;
       else params[P_CACHEMEM] = 0;
@@ -3103,7 +3103,7 @@ void searchSetup() {
    timeStamp();
 }
 
-void finalReport() {
+void finalReport(void) {
    timeStamp();
    printf("Search complete.\n\n");
    
