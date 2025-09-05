@@ -104,7 +104,7 @@ int gutterSkew = 0;     /* number of cells to skew halves in gutter symmetric se
 
 /* the big data structures */
 #define qBits params[P_QBITS]
-#define QSIZE (1LU<<qBits)
+#define QSIZE (1LLU<<qBits)
 
 #define hashBits params[P_HASHBITS]
 #define HASHSIZE (1LU<<hashBits)
@@ -242,8 +242,8 @@ const char *rulekeys[] = {
 /*   Parses the rule.  If there's an error, return a string describing the error.
 **   Fills in the 512-element array pointed to by tab.
 */
-const char *parseRule(const char *rule, int *tab) {
-   const char *p = rule;
+const char *parseRule(const char *theRule, int *tab) {
+   const char *p = theRule;
    int tempTab[256];    /* needed to keep track of values when setting forbidden conditions */
    for (int i=0; i<512; i++)
       tab[i] = 0;
@@ -333,7 +333,7 @@ const char *parseRule(const char *rule, int *tab) {
 void makePhases(void);
 #endif
 
-char nttable2[512];
+int8_t nttable2[512];
 
 int slowEvolveBit(int row1, int row2, int row3, int bshift) {
    return nttable[(((row2>>bshift) & 2)<<7) | (((row1>>bshift) & 2)<<6)
@@ -347,7 +347,7 @@ void fasterTable(void) {
    for (int row1=0; row1<8; row1++)
       for (int row2=0; row2<8; row2++)
          for (int row3=0; row3<8; row3++)
-            nttable2[p++] = slowEvolveBit(row1, row2, row3, 0);
+            nttable2[p++] = (int8_t)slowEvolveBit(row1, row2, row3, 0);
 }
 
 int evolveBitShift(int row1, int row2, int row3, int bshift) {
@@ -521,7 +521,7 @@ int getcount(int row1, int row2, int row3) {
    return theRow[row3+1] - theRow[row3];
 }
 
-unsigned char *causesBirth;
+uint8_t *causesBirth;
 row *flip;
 int *gWorkConcat;       /* gWorkConcat to be parceled out between threads */
 int *rowHash;
@@ -543,7 +543,7 @@ void makeFlip(void) {
 void makeTables(void) {
    flip = (row*)malloc(sizeof(*flip)<<width);
    makeFlip();
-   causesBirth = (unsigned char*)malloc(sizeof(*causesBirth)<<width);
+   causesBirth = (uint8_t*)malloc(sizeof(*causesBirth)<<width);
    gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2)));
    rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2)));
    for (int i=0; i<1<<(2*width); i++)
@@ -553,9 +553,10 @@ void makeTables(void) {
    gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2);
    
-   uint32_t i;
-   for (i = 0; i < 1LLU << width; ++i) causesBirth[i] = (evolveRow(i,0,0) ? 1 : 0);
-   for (i = 0; i < 1LLU << width; ++i) gcount[i] = 0;
+   for (uint32_t j = 0; j < 1LLU << width; ++j)
+      causesBirth[j] = (evolveRow(j,0,0) ? 1 : 0);
+   for (uint32_t j = 0; j < 1LLU << width; ++j)
+      gcount[j] = 0;
    gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
    if (params[P_REORDER] == 1)
       genStatCounts();
@@ -565,7 +566,7 @@ void makeTables(void) {
    gcount[0] = 0xffffffff;    /* Maximum value so empty row is chosen first */
    valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width);
    for (int i=0; i<1<<width; i++)
-      valorder[i] = (1<<width)-1-i;
+      valorder[i] = (uint16_t) ((1<<width)-1-i);
    if (params[P_REORDER] != 0)
       sortRows(valorder, 1<<width);
    for (int row2=0; row2<1<<width; row2++)
@@ -585,7 +586,7 @@ uint16_t *bmalloc(int siz) {
          printf("Aborting due to excessive memory usage\n");
          exit(1);
       }
-      bbuf = (uint16_t *)calloc(sizeof(uint16_t), bbuf_left);
+      bbuf = (uint16_t *)calloc(sizeof(uint16_t), (size_t)bbuf_left);
    }
    uint16_t *r = bbuf;
    bbuf += siz;
@@ -664,7 +665,7 @@ uint16_t *makeRow(int row1, int row2) {
          theRow[row3+1] += theRow[row3];
       for (int row3=good-1; row3>=0; row3--) {
          int row4 = gWork[row3];
-         theRow[--theRow[row4]] = gWork2[row3];
+         theRow[--theRow[row4]] = (uint16_t)gWork2[row3];
       }
       unsigned int h = hashRow(theRow, 1+(1<<width)+good);
       h &= (2 << (2 * width)) - 1;
@@ -1185,7 +1186,7 @@ static inline int qIsEmpty(void) {
 
 void qFull(void) {
     if (aborting != 2) {
-      printf("Exceeded %lu node limit, search aborted\n", QSIZE);
+      printf("Exceeded %llu node limit, search aborted\n", QSIZE);
       fflush(stdout);
       aborting = 2;
    }
@@ -1202,13 +1203,13 @@ static inline void enqueue(node b, row r) {
       long o = b - base[i>>BASEBITS];
       if (o < 0 || o >(long) MAXOFFSET) {   /* offset out of range */
          while (!FIRSTBASE(i)) {
-            rows[i] = -1;
+            rows[i] = (row) -1;
             i = qTail++;
             if (i >= QSIZE) qFull();
          }
          base[i>>BASEBITS] = b;
          rows[i] = r;
-      } else rows[i] = (o << width) + r;
+      } else rows[i] = (row)(o << width) + r;
    }
    
    /* update tail of parallel queue, but don't set value */
@@ -1276,7 +1277,7 @@ void parseDumpRoot(void) {
    /* replace first "@time" with hex timestamp */
    if ((s = strstr(dumpRoot, "@time"))){
       memcpy(tempStr, dumpRoot, s - dumpRoot);
-      sprintf(trueDumpRoot, "%s%06lx%s", tempStr, time(NULL) & 0xffffff, s+5);
+      sprintf(trueDumpRoot, "%s%06llx%s", tempStr, (long long) time(NULL) & 0xffffff, s+5);
    }
    else
       memcpy(trueDumpRoot, dumpRoot, MAXDUMPROOT + 9);
@@ -1424,7 +1425,7 @@ void doCompactPart1(void) {
                      x is nonempty and points to y or something before y.
                      so, if x doesn't point to y, y must be unused and can be removed. */
       if (!EMPTY(y)) {
-         if (y > PARENT(x)) rows[y] = -1;
+         if (y > PARENT(x)) rows[y] = (row) -1;
          else while (EMPTY(x) || PARENT(x) == y) x--;
       }
       y--;
@@ -1580,7 +1581,7 @@ int getkey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
    ce->p2 = p2;
    ce->p3 = p3;
    ce->abn = abn;
-   return h;
+   return (int) h;
 }
 
 void setkey(int h, int v) {
@@ -2138,11 +2139,6 @@ void checkParams(void) {
    
    /* Errors */
    
-   /* There would probably be several integer overflow bugs if sizeof(int) == 2. */
-   if (sizeof(int) == 2)
-      printError("This program does not work when compiled in 16-bit mode.\n       "
-                 "Please recompile.");
-   
    ruleError = parseRule(rule, nttable);
    
    if (ruleError != 0){
@@ -2351,7 +2347,7 @@ void loadState(void) {
          continue;
       }
       deepRows[theDeepIndex] = (row*)calloc( j + 1 + 2, sizeof(**deepRows));
-      deepRows[theDeepIndex][0] = j;
+      deepRows[theDeepIndex][0] = (row) j;
       for (i = 1; i < j + 1 + 2; ++i){
          deepRows[theDeepIndex][i] = (row) loadUInt(fp);
       }
@@ -2914,8 +2910,8 @@ void searchSetup(void) {
 #endif
    
    /* Generate proper rule string for printing patterns */
-   int i;
-   int j = 0;
+   uint32_t i;
+   uint32_t j = 0;
    int k = 1;
    for (i = 0; i < 151 && rule[i] != '\0'; i++){
       if (rule[i] == '~') k = 0;
@@ -2937,8 +2933,6 @@ void searchSetup(void) {
    
    /* split queue across multiple files */
    if (splitNum > 0){
-      uint32_t i,j;
-      
       dumpMode = D_SEQUENTIAL; 
       
       echoParams();
@@ -3079,7 +3073,7 @@ void searchSetup(void) {
    /* Allocate lookahead cache */
 #ifndef NOCACHE
    cachesize = 32768;
-   while (cachesize * sizeof(cacheentry) < 550000 * (unsigned long long)params[P_CACHEMEM])
+   while (cachesize * ((long long) sizeof(cacheentry)) < 550000 * (long long) params[P_CACHEMEM])
       cachesize <<= 1;
    memusage += sizeof(cacheentry) * (cachesize + 5) * params[P_NUMTHREADS];
    if (params[P_MEMLIMIT] >= 0 && memusage > memlimit){
@@ -3087,11 +3081,11 @@ void searchSetup(void) {
       exit(1);
    }
    totalCache = (cacheentry *)calloc(sizeof(cacheentry),
-         (cachesize + 5) * params[P_NUMTHREADS]);
+         (size_t)((cachesize + 5) * params[P_NUMTHREADS]));
    cache = (cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
    
-   for (int i = 0; i < params[P_NUMTHREADS]; i++)
-      cache[i] = totalCache + (cachesize + 5) * i;
+   for (k = 0; k < params[P_NUMTHREADS]; k++)
+      cache[k] = totalCache + (cachesize + 5) * k;
 #endif
    
    echoParams();
