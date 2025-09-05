@@ -544,27 +544,27 @@ void makeTables(void) {
    flip = (row*)malloc(sizeof(*flip)<<width);
    makeFlip();
    causesBirth = (uint8_t*)malloc(sizeof(*causesBirth)<<width);
-   gInd3 = (uint16_t **)calloc(sizeof(*gInd3),(1LL<<(width*2)));
-   rowHash = (int *)calloc(sizeof(int),(2LL<<(width*2)));
+   gInd3 = (uint16_t **)calloc(1LL<<(width*2), sizeof(*gInd3));
+   rowHash = (int *)calloc(2LL<<(width*2), sizeof(int));
    for (int i=0; i<1<<(2*width); i++)
       gInd3[i] = 0;
    for (int i=0; i<2<<(2*width); i++)
       rowHash[i] = -1;
-   gcount = (uint32_t *)calloc(sizeof(*gcount), (1LL << width));
+   gcount = (uint32_t *)calloc(1LL << width, sizeof(*gcount));
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2);
    
    for (uint32_t j = 0; j < 1LLU << width; ++j)
       causesBirth[j] = (evolveRow(j,0,0) ? 1 : 0);
    for (uint32_t j = 0; j < 1LLU << width; ++j)
       gcount[j] = 0;
-   gWorkConcat = (int *)calloc(sizeof(int), (3LL*params[P_NUMTHREADS])<<width);
+   gWorkConcat = (int *)calloc((3LL*params[P_NUMTHREADS])<<width, sizeof(int));
    if (params[P_REORDER] == 1)
       genStatCounts();
    if (params[P_REORDER] == 2)   /* this option currently cannot be set at runtime */
       for (int i=1; i<1<<width; i++)
          gcount[i] = 1 + gcount[i & (i - 1)];
    gcount[0] = 0xffffffff;    /* Maximum value so empty row is chosen first */
-   valorder = (uint16_t *)calloc(sizeof(uint16_t), 1LL << width);
+   valorder = (uint16_t *)calloc(1LL << width, sizeof(uint16_t));
    for (int i=0; i<1<<width; i++)
       valorder[i] = (uint16_t) ((1<<width)-1-i);
    if (params[P_REORDER] != 0)
@@ -586,7 +586,7 @@ uint16_t *bmalloc(int siz) {
          printf("Aborting due to excessive memory usage\n");
          exit(1);
       }
-      bbuf = (uint16_t *)calloc(sizeof(uint16_t), (size_t)bbuf_left);
+      bbuf = (uint16_t *)calloc((size_t) bbuf_left, sizeof(uint16_t));
    }
    uint16_t *r = bbuf;
    bbuf += siz;
@@ -698,7 +698,7 @@ uint16_t *makeRow(int row1, int row2) {
 **   the edge conditions appropriately.
 */
 void genStatCounts(void) {
-   int *cnt = (int*)calloc((128 * sizeof(int)), 1LL << width);
+   int *cnt = (int*)calloc(1LL << width, 128 * sizeof(int));
    for (int i=0; i<128<<width; i++)
       cnt[i] = 0;
    int s = 0;
@@ -1633,9 +1633,9 @@ static void deepen(void) {
       int *pRemain;
       row *pRows;
       
-      pInd = (uint16_t**)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pInd));
-      pRemain = (int*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRemain));
-      pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), (long long)sizeof(*pRows));
+      pInd = (uint16_t**)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pInd));
+      pRemain = (int*)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pRemain));
+      pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pRows));
       
       long long j;
       #pragma omp for schedule(dynamic, CHUNK_SIZE)
@@ -2331,8 +2331,8 @@ void loadState(void) {
       rows[i] = (row) loadUInt(fp);
    
    /* Load extension rows for each queue node */
-   deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
-   deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
+   deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1), sizeof(*deepRows));
+   deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(deepRowIndices));
    
    uint32_t theDeepIndex = 2;
    deepQTail = 0;
@@ -2895,8 +2895,8 @@ void searchSetup(void) {
          if (hash == 0) printf("Unable to allocate hash table, duplicate elimination disabled\n");
       }
       
-      deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1),sizeof(*deepRows));
-      deepRowIndices = (uint32_t*)calloc(QSIZE,sizeof(deepRowIndices));
+      deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1), sizeof(*deepRows));
+      deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(deepRowIndices));
       
       resetQ();
       resetHash();
@@ -3082,9 +3082,9 @@ void searchSetup(void) {
       printf("Not enough memory to allocate lookahead cache\n");
       exit(1);
    }
-   totalCache = (cacheentry *)calloc(sizeof(cacheentry),
-         (size_t)((cachesize + 5) * params[P_NUMTHREADS]));
-   cache = (cacheentry **)calloc(sizeof(**cache), params[P_NUMTHREADS]);
+   totalCache = (cacheentry *)calloc((size_t) ((cachesize + 5) * params[P_NUMTHREADS]), 
+                                     sizeof(cacheentry));
+   cache = (cacheentry **)calloc(params[P_NUMTHREADS], sizeof(**cache));
    
    for (k = 0; k < params[P_NUMTHREADS]; k++)
       cache[k] = totalCache + (cachesize + 5) * k;
