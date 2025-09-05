@@ -382,7 +382,7 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       {
          theDeepRows = deepRows[theDeepIndex];
       }
-      if (reloadDepthFirst( startRow,
+      if (reloadDepthFirst( (uint16_t) startRow,
                             pPhase,
                             howDeep,
                             theDeepRows,

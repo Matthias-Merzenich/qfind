@@ -1704,8 +1704,10 @@ static void breadthFirst(void) {
    }
 }
 
-void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRows) {
+/* Save rows from deepening step in pRows array (probably should be stored as a struct instead) */
+void saveDepthFirst(node theNode, uint32_t startRow, uint32_t howDeep, row *pRows) {
    uint32_t theDeepIndex;
+   uint16_t totalDepth = (uint16_t) ((startRow + howDeep) & UINT16_MAX); /* truncate to fit in array */
    #pragma omp critical(findDeepIndex)
    {
       theDeepIndex = 2;
@@ -1715,7 +1717,7 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
          aborting = 1;
       }
       if (!aborting){
-         deepRows[theDeepIndex] = (row*)calloc( startRow + howDeep + 1 + 2,
+         deepRows[theDeepIndex] = (row*)calloc( totalDepth + 1 + 2,
                                                 sizeof(**deepRows) );
       }
    }
@@ -1723,10 +1725,10 @@ void saveDepthFirst(node theNode, uint16_t startRow, uint16_t howDeep, row *pRow
    
    memcpy( deepRows[theDeepIndex] + 2,
            pRows,
-           (startRow + howDeep + 1) * (long long)sizeof(**deepRows) );
+           (totalDepth + 1) * (long long)sizeof(**deepRows) );
    
-   deepRows[theDeepIndex][0] = startRow + howDeep;
-   deepRows[theDeepIndex][1] = startRow;
+   deepRows[theDeepIndex][0] = totalDepth;
+   deepRows[theDeepIndex][1] = (uint16_t) startRow;
    
    deepRowIndices[deepQHead + theNode - qHead] = theDeepIndex;
 }

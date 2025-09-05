@@ -273,12 +273,12 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       {
          theDeepRows = deepRows[theDeepIndex];
       }
-      if (reloadDepthFirst( startRow,
-                           howDeep,
-                           theDeepRows,
-                           pInd,
-                           pRemain,
-                           pRows ))
+      if (reloadDepthFirst( (uint16_t) startRow,
+                            howDeep,
+                            theDeepRows,
+                            pInd,
+                            pRemain,
+                            pRows ))
       {
          return 1;   /* return if howDeep is less than the length of the previous extension */
       }
