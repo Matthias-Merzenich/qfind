@@ -2523,6 +2523,10 @@ int readInt(char *opt, char *arg) {
    char c;
    if (arg == 0)
       aborting = 1;
+   else if (strlen(arg) > 9){    /* prevent integer overflow in sscanf() from bad input */
+      fprintf(stderr, "Error: invalid argument %s in option %s.\n", arg, opt);
+      aborting = 1;
+   }
    else if (sscanf(arg, "%d%c", &i, &c) != 1){
       fprintf(stderr, "Error: invalid argument %s in option %s.\n", arg, opt);
       aborting = 1;
@@ -2536,7 +2540,9 @@ const char *parseVelocity(char *velString, int *per, int *off) {
    *off = 1;
    char b = 0;
    char c = 0;
-   if (!strcmp(velString,"c"))
+   if (strlen(velString) > 11)   /* prevent integer overflow in sscanf() from bad input */
+      return "velocity string too long";
+   else if (!strcmp(velString,"c"))
       return 0;
    else if (sscanf(velString, "c/%d%c%c", per, &b, &c) >= 1){
       if (b == 'd' && !c)
