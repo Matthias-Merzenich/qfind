@@ -253,7 +253,7 @@ int reloadDepthFirst(uint16_t startRow, uint16_t howDeep, row *pRows, uint16_t *
    return 0;
 }
 
-int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit){
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit, _Atomic int *passed){
    node x = theNode;
    uint32_t startRow = 2*PERIOD + 1;
    uint32_t currRow = startRow;
