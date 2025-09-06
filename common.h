@@ -1597,7 +1597,7 @@ void setkey(int h, int v) {
 /* ========================== */
 
 void process(node theNode);
-int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit);
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit, _Atomic int *passed);
 
 static void deepen(void) {
    /* compute amount to deepen, apply reduction if too deep */
@@ -1623,8 +1623,10 @@ static void deepen(void) {
    
    _Atomic int remainingItems = 0;
    _Atomic int forceExit = 0;
+   _Atomic int passed = 0;
    atomic_store_explicit(&remainingItems, qTail - qHead, memory_order_seq_cst);
    atomic_store_explicit(&forceExit, 0, memory_order_seq_cst);
+   atomic_store_explicit(&passed, 0, memory_order_seq_cst);
 
    /* go through queue, deepening each one */
    #pragma omp parallel
@@ -1640,7 +1642,7 @@ static void deepen(void) {
       long long j;
       #pragma omp for schedule(dynamic, CHUNK_SIZE)
       for (j = qHead; j < qTail; j++) {
-         if (!EMPTY(j) && !depthFirst((node)j, (uint16_t)deepeningAmount, pInd, pRemain, pRows, &remainingItems, &forceExit))
+         if (!EMPTY(j) && !depthFirst((node)j, (uint16_t)deepeningAmount, pInd, pRemain, pRows, &remainingItems, &forceExit, &passed))
             MAKEEMPTY(j);
          atomic_fetch_sub_explicit(&remainingItems, 1, memory_order_relaxed);
       }

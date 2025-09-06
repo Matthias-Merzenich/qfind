@@ -359,7 +359,7 @@ int reloadDepthFirst(uint16_t startRow, int pPhase, uint16_t howDeep, row *pRows
    return 0;
 }
 
-int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit){
+int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, row *pRows, _Atomic int *remainingItems, _Atomic int *forceExit, _Atomic int *passed){
    int pPhase = peekPhase(theNode);
    node x = theNode;
    uint32_t startRow = 2*period + 1;
@@ -449,8 +449,10 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       if (pPhase == period) pPhase = 0;
       
       /* Test for early exit conditions */
-      if ( atomic_load_explicit(forceExit, memory_order_relaxed) ||
-           (params[P_EARLYEXIT] && atomic_load_explicit(remainingItems, memory_order_relaxed) < earlyExit) )
+      if ( atomic_load_explicit(forceExit, memory_order_relaxed)
+           || (   params[P_EARLYEXIT]
+               && atomic_load_explicit(remainingItems, memory_order_relaxed) < earlyExit
+               && atomic_load_explicit(passed, memory_order_relaxed) ) )
          {
          deepRowIndices[deepQHead + theNode - qHead] = 1;   /* flag as success without saving extension rows */
          int earlyExitHowDeep = currRow - startRow - 1;
@@ -462,6 +464,9 @@ int depthFirst(node theNode, uint16_t howDeep, uint16_t **pInd, int *pRemain, ro
       /* Check if we reached the desired depth. If so,  
          check if the result is a complete spaceship */
       if (currRow > startRow + howDeep){
+         /* Increment successful depth-first counter (used in early exit check) */
+         atomic_fetch_add_explicit(passed, 1, memory_order_relaxed);
+
          /* Flag that an extension was found. This value will be changed by saveDepthFirst() */
          deepRowIndices[deepQHead + theNode - qHead] = 1;
          
