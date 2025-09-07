@@ -6,7 +6,7 @@ Eppstein's gfind and zdr's zfind search programs.  Additional code and
 suggestions were provided by Paul Tooke, Tomas Rokicki, Frank Everdij,
 Alex Greason, praosylen, and Adam P. Goucher.
 
-Three scripts are included:
+Two scripts are included:
 
 qfind.c:
    The main search program.  This program uses OpenMP and C11 atomics to
@@ -15,13 +15,10 @@ qfind.c:
    
    gcc -std=c11 -fopenmp -march=native -O3 -Wall -Wextra -o qfind qfind.c 
 
-
-qfind-s.c
-   A simplified version of qfind with fewer features that is slightly faster.
-   You must change the period and offset of the desired search in the code
-   before compiling.  This version only allows gcd(period,offset) = 1.
-   Compilation is otherwise the same.
-
+   It is possible to compile qfind with a predetermined velocity by defining
+   the preprocessor macros PERIOD and OFFSET at the beginning of the code.
+   If you compile with a predetermined velocity, you are restricted to
+   gcd(PERIOD, OFFSET) = 1.
 
 get-rows.lua:
    This is a Golly Lua script to help with extending partial results.  Usage

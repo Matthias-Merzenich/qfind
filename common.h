@@ -1753,8 +1753,7 @@ void printHelp(void) {
           "occurrences of the same option overwriting the previous value.\n");
    printf("\n");
 #ifdef QSIMPLE
-   printf("When using qfind-s, the period and offset must be set within the code before it \n"
-          "is compiled.  You have compiled with\n");
+   printf("You have compiled with the following values:\n");
    printf("\n");
    printf("Period: %d\n",PERIOD);
    printf("Offset: %d\n",OFFSET);
@@ -2157,7 +2156,8 @@ void checkParams(void) {
    
 #ifdef QSIMPLE
    if (gcd(PERIOD,OFFSET) > 1)
-      printError("qfind-s does not support gcd(PERIOD,OFFSET) > 1. Use qfind instead.");
+      printError("gcd(PERIOD,OFFSET) > 1 not supported when compiled with preset values.\n       "
+                 "Please recompile with PERIOD and OFFSET undefined.");
 #else
    if (params[P_PERIOD] > MAXPERIOD)
       printError("maximum allowed period (" XSTR(MAXPERIOD) ") exceeded.");
