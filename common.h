@@ -29,7 +29,7 @@
 #define XSTR(x) STR(x)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 4 September 2025"
+#define BANNER XSTR(WHICHPROGRAM)" v2.4b by Matthias Merzenich, 8 September 2025"
 
 #define FILEVERSION ((unsigned long) 2025090401)  /* yyyymmddnn */
 
@@ -118,7 +118,7 @@ node * base;
 node * hash;
 
 int nttable[512];
-uint16_t **gInd3;
+_Atomic(uint16_t*) *gInd3;
 uint32_t *gcount;
 uint16_t *gRows;
 long long memusage = 0;
@@ -492,7 +492,7 @@ uint16_t *makeRow(int row1, int row2);
 /* getoffset() returns a pointer to a lookup table where further information */
 /* is found.  It is used in getoffsetcount() and in lookAhead().             */
 uint16_t *getoffset(int row12) {
-   uint16_t *r = gInd3[row12];
+   uint16_t *r = atomic_load_explicit(&gInd3[row12], memory_order_relaxed);
    if (r == 0)
       r = makeRow(row12 >> width, row12 & ((1 << width) - 1));
    return r;
@@ -543,12 +543,12 @@ void makeFlip(void) {
 void makeTables(void) {
    flip = (row*)malloc(sizeof(*flip)<<width);
    makeFlip();
-   causesBirth = (uint8_t*)malloc(sizeof(*causesBirth)<<width);
-   gInd3 = (uint16_t **)calloc(1LL<<(width*2), sizeof(*gInd3));
-   rowHash = (int *)calloc(2LL<<(width*2), sizeof(int));
-   for (int i=0; i<1<<(2*width); i++)
-      gInd3[i] = 0;
-   for (int i=0; i<2<<(2*width); i++)
+   causesBirth = (uint8_t*)calloc(1LL<<width, sizeof(*causesBirth));
+   gInd3 = (_Atomic(uint16_t*) *)calloc(1LL<<(width*2), sizeof(*gInd3));
+   rowHash = (int *)calloc(2LL<<(width*2), sizeof(*rowHash));
+   for (long long i=0; i<1LL<<(2*width); i++)
+      atomic_init(&gInd3[i], NULL);
+   for (long long i=0; i<2LL<<(2*width); i++)
       rowHash[i] = -1;
    gcount = (uint32_t *)calloc(1LL << width, sizeof(*gcount));
    memusage += (sizeof(*gInd3)+2*sizeof(int)) << (width*2);
@@ -677,7 +677,10 @@ uint16_t *makeRow(int row1, int row2) {
          /* Maybe two different row12s result in the exact same rows for the */
          /* lookup table. This prevents two different threads from trying to */
          /* build the same part of the lookup table.                         */
-         if (memcmp(theRow, gInd3[rowHash[h]], 2*(1+(1<<width)+good)) == 0) {
+         if (memcmp( theRow,
+                     atomic_load_explicit(&gInd3[rowHash[h]], memory_order_relaxed),
+                     2*(1+(1<<width)+good)
+                   ) == 0) {
             theRow = gInd3[rowHash[h]];
             unbmalloc(1+(1<<width)+good);
             break;
@@ -685,7 +688,7 @@ uint16_t *makeRow(int row1, int row2) {
          h = (h + 1) & ((2 << (2 * width)) - 1);
       }
       
-      gInd3[(row1<<width)+row2] = theRow;
+      atomic_store_explicit(&gInd3[(row1<<width)+row2], theRow, memory_order_relaxed);
    }
    
    return theRow;
