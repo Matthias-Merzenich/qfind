@@ -2662,13 +2662,13 @@ void parseOptions(int argc, char *argv[]) {
                            argv,
                            ":"   /* List of short options; "<option>:" means argument required */
 #ifndef QSIMPLE
-                           "kKv:V:"
+                           "v:V:"
 #endif
 #ifdef _OPENMP
                            "t:T:"
 #endif
-                           "a:b:c:d:e:f:g:h:i:j:l:m:n:o:pq:r:s:w:z"     /* Currently unused: */
-                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:Z",    /* u,x,y,U,X,Y       */
+                           "a:b:c:d:e:f:g:h:i:j:l:m:n:o:pq:r:s:w:"     /* Currently unused:   */
+                           "A:B:C:D:E:F:G:H:I:J:L:M:N:O:PQ:R:S:W:",    /* k,u,x,y,z,K,U,X,Y,Z */
                            options,
                            &optName,
                            &optArg)) != -1 )
@@ -2699,9 +2699,6 @@ void parseOptions(int argc, char *argv[]) {
             }
             break;
          }
-         case 'k': case 'K':
-            params[P_FULLPERIOD] ^= 1;
-            break;
          case 257:   /* --enable-subperiod */
             params[P_FULLPERIOD] = 0;
             break;
@@ -2781,9 +2778,6 @@ void parseOptions(int argc, char *argv[]) {
             break;
          case 'g': case 'G':
             params[P_MINEXTENSION] = readInt(optName, optArg);
-            break;
-         case 'z': case 'Z':
-            params[P_PRINTDEEP] ^= 1;
             break;
          case 'p': case 'P':
             previewFlag = 1;
