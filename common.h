@@ -162,7 +162,7 @@ cacheentry **cache;
 ** PARENT(b) returns the index of the parent of b
 */
 
-#define MAXWIDTH (14)   /* hard limit as long as rows are of type uint16_t */
+#define MAXWIDTH 14     /* hard limit as long as rows are of type uint16_t */
 
 #define ROWBITS ((1<<width)-1)
 #define BASEBITS (params[P_BASEBITS])
@@ -313,6 +313,8 @@ const char *parseRule(const char *theRule, int *tab) {
             else
                return "Unexpected character in rule";
          }
+         if (neg && (*(p-1) == '-'))
+            return "Negation sign must be followed by at least one letter";
          if (neg && allowed == -1)
             for (int i=0; i<256; i++)
                if (tempTab[i] == forbiddenCount)
@@ -757,8 +759,8 @@ void resetHash(void) {
 
 int hashPhase = 0;
 
-static inline long hashFunction(node b, row r) {
-   long h = r;
+static inline size_t hashFunction(node b, row r) {
+   uint16_t h = r;
    if (params[P_SYMMETRY] == SYM_ASYM) h += flip[r];
    int i;
    for (i = 0; i < nRowsInState; i++) {
@@ -768,7 +770,7 @@ static inline long hashFunction(node b, row r) {
    }
    h += (h>>16)*269;
    h += (h>>8)*269;
-   return h & HASHMASK;
+   return (size_t)(h & HASHMASK);
 }
 
 /* test if q+r is same as p */
@@ -800,7 +802,7 @@ static inline int sameFlipped(node p, node q, row r) {
 static inline int isVisited(node b, row r) {
    if (same(0,b,r)) return 1;
    if (hash != 0) {
-      int hashVal = hashFunction(b,r);
+      size_t hashVal = hashFunction(b,r);
       node hashNode = hash[hashVal];
       if (hashNode == 0)
          return 0;
@@ -854,7 +856,7 @@ void bufRow(unsigned long rr, unsigned long r, int shift) {
          bufRLE(r & 1 ? 'o' : 'b');
       else shift--;
       r >>= 1;
-      if (rr & 1) r |= (1<<31);
+      if (rr & 1) r |= (1UL<<31);
       rr >>= 1;
    }
    bufRLE('$');
@@ -1035,11 +1037,11 @@ int bufferPattern(node b, row *pRows, int nodeRow, uint32_t lastRow, int printEx
    /* make at least one row have nonzero first bit */
    i = 0;
    while ((srows[i] & 1) == 0) {
-      for (i = 0; (srows[i] & 1) == 0 && i < nrows; i++) { }
+      for (i = 0; i < nrows && (srows[i] & 1) == 0; i++) { }
       if (i == nrows) {
          for (i = 0; i < nrows; i++) {
             srows[i] >>= 1;
-            if (ssrows[i] & 1) srows[i] |= (1<<31);
+            if (ssrows[i] & 1) srows[i] |= (1UL<<31);
             ssrows[i] >>= 1;
          }
          i = 0;
@@ -1198,7 +1200,10 @@ void qFull(void) {
 static inline void enqueue(node b, row r) {
    node tempQTail = qTail;
    node i = qTail++;
-   if (i >= QSIZE) qFull();
+   if (i >= QSIZE) {
+      qFull();
+      return;
+   }
    else if (FIRSTBASE(i)) {
       base[i>>BASEBITS] = b;
       rows[i] = r;
@@ -1208,7 +1213,10 @@ static inline void enqueue(node b, row r) {
          while (!FIRSTBASE(i)) {
             rows[i] = (row) -1;
             i = qTail++;
-            if (i >= QSIZE) qFull();
+            if (i >= QSIZE) {
+               qFull();
+               return;
+            }
          }
          base[i>>BASEBITS] = b;
          rows[i] = r;
@@ -1271,33 +1279,36 @@ int dumpMode;  /* separate from params[P_DUMPMODE] for splitting */
 #define D_SEQUENTIAL (2)
 
 void parseDumpRoot(void) {
-   char tempStr[MAXDUMPROOT + 10]  = {'\0'};
+   /* All copies are bounded: dumpRoot may come from a loaded file (up to 250 chars). */
+   char tempStr[256] = {'\0'};
    char tempRule[151] = {'\0'};
    char *r, *t;
    const char *s;
-   memset(trueDumpRoot, '\0', 251);
+   memset(trueDumpRoot, '\0', sizeof trueDumpRoot);
    
    /* replace first "@time" with hex timestamp */
    if ((s = strstr(dumpRoot, "@time"))){
-      memcpy(tempStr, dumpRoot, s - dumpRoot);
-      sprintf(trueDumpRoot, "%s%06llx%s", tempStr, (long long) time(NULL) & 0xffffff, s+5);
+      snprintf(tempStr, sizeof tempStr, "%.*s", (int)(s - dumpRoot), dumpRoot);
+      if (snprintf(trueDumpRoot, sizeof trueDumpRoot, "%s%06llx%s", tempStr, (long long) time(NULL) & 0xffffff, s+5) >= (int)sizeof trueDumpRoot)
+         fprintf(stderr, "Warning: dump root truncated\n");
    }
    else
-      memcpy(trueDumpRoot, dumpRoot, MAXDUMPROOT + 9);
+      snprintf(trueDumpRoot, sizeof trueDumpRoot, "%s", dumpRoot);
    
    /* replace first "@rule" with rule string ('/' replaced with '_') */
-   memcpy(tempStr, trueDumpRoot, MAXDUMPROOT + 9);
+   snprintf(tempStr, sizeof tempStr, "%s", trueDumpRoot);
    if ((t = strstr(tempStr, "@rule"))){
-      memcpy(tempRule, rule, 150);
+      snprintf(tempRule, sizeof tempRule, "%s", rule);
       r = strchr(tempRule, '/');
-      *r = '_';
+      if (r)
+         *r = '_';
       *t = '\0';
-      sprintf(trueDumpRoot, "%s%s%s", tempStr, tempRule, t+5);
+      if (snprintf(trueDumpRoot, sizeof trueDumpRoot, "%s%s%s", tempStr, tempRule, t+5) >= (int)sizeof trueDumpRoot)
+         fprintf(stderr, "Warning: dump root truncated\n");
    }
    
    /* replace additional occurrences of '@' with '_' */
-   r = trueDumpRoot - 1;
-   while (*(++r) != '\0')
+   for (r = trueDumpRoot; *r != '\0'; ++r)
       if (*r == '@')
          *r = '_';
    
@@ -1362,7 +1373,7 @@ void dumpState(void) {
          else {
             fprintf(fp,"0\n");
             j = 0;
-            while (deepRowIndices[i] <= 1 && i < QSIZE){
+            while (i < QSIZE && deepRowIndices[i] <= 1){
                if (deepRowIndices[i] == 1) ++j;
                ++i;
             }
@@ -1513,7 +1524,7 @@ void doCompactPart2(void) {
    /* Respace depth-first extension queue to match node queue */
    i = 0;
    j = 0;
-   while (!deepRowIndices[j] && j < QSIZE) ++j;
+   while (j < QSIZE && !deepRowIndices[j]) ++j;
    for (x = qHead; x < qTail && j < QSIZE; ++x){
       if (EMPTY(x)){
          ++i;
@@ -1574,7 +1585,8 @@ int getCacheKey(uint16_t *p1, uint16_t *p2, uint16_t *p3, int abn) {
 #endif
    unsigned long long h = (unsigned long long)p1 +
       17 * (unsigned long long)p2 + 257 * (unsigned long long)p3 +
-      513 * abn;
+      513ULL * (unsigned)abn;
+   h ^= h >> 16;
    h = h + (h >> 15);
    h &= (cachesize-1);
    cacheentry *ce = &(cache[omp_get_thread_num()][h]);
@@ -1641,6 +1653,10 @@ static void deepen(void) {
       pInd = (uint16_t**)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pInd));
       pRemain = (int*)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pRemain));
       pRows = (row*)calloc((deepeningAmount + 4 * params[P_PERIOD]), sizeof(*pRows));
+      if (!pInd || !pRemain || !pRows) {
+         fprintf(stderr, "Error: out of memory while deepening\n");
+         exit(1);
+      }
       
       long long j;
       #pragma omp for schedule(dynamic, CHUNK_SIZE)
@@ -2183,8 +2199,14 @@ void checkParams(void) {
       printError("initial rows file cannot be used when the search state is loaded from a\n       "
                  "saved state.");
    }
-   if (params[P_QBITS] <= 0)
-      printError("queue bits (-q) must be positive.");
+   if (params[P_WIDTH] > MAXWIDTH)
+      printError("maximum allowed width (" XSTR(MAXWIDTH) ") exceeded.");
+   if (params[P_NUMTHREADS] <= 0)
+      printError("number of threads (-t) must be positive.");
+   if (params[P_QBITS] < 4)
+      printError("queue bits (-q) must be at least 4.");
+   if (params[P_MINDEEP] > 10000 || params[P_FIRSTDEEP] > 10000)
+      printError("deepening amounts (-i, -n, --fixed-depth) must not exceed 10000.");
    if (params[P_BASEBITS] <= 0)
       printError("base bits (-b) must be positive.");
    if (params[P_BASEBITS] >= params[P_QBITS])
@@ -2216,8 +2238,8 @@ void checkParams(void) {
    if (params[P_QBITS] > 31 && !aborting){
       fprintf(stderr, "Warning: queue bits (-q) reduced to 31.\n");
       params[P_QBITS] = 31;      /* corresponds to a queue size of 2GB */
-      if (params[P_BASEBITS] > params[P_QBITS]){
-         fprintf(stderr, "Warning: base bits (-q) reduced to 30.\n");
+      if (params[P_BASEBITS] >= params[P_QBITS]){
+         fprintf(stderr, "Warning: base bits (-b) reduced to 30.\n");
          params[P_BASEBITS] = 30;
       }
    }
@@ -2390,7 +2412,7 @@ void printRow(row theRow) {
 void loadInitRows(char * file) {
    FILE * fp;
    int i,j;
-   char rowStr[MAXWIDTH];
+   char rowStr[MAXWIDTH + 1];
    row theRow = 0;
    
    loadFile = file;
@@ -2400,7 +2422,7 @@ void loadInitRows(char * file) {
    printf("Starting search from rows in %s:\n",loadFile);
    
    for (i = 0; i < 2 * period; i++){
-      if (fscanf(fp,"%s",rowStr) != 1) loadFail();
+      if (fscanf(fp,"%" XSTR(MAXWIDTH) "s",rowStr) != 1 || (int)strlen(rowStr) < width) loadFail();
       for (j = 0; j < width; j++){
          theRow |= ((rowStr[width - j - 1] == '.') ? 0:1) << j;
       }
@@ -2430,7 +2452,7 @@ void setDefaultParams(void) {
    params[P_BASEBITS] = 4;
    params[P_QBITS] = QBITS;
    params[P_HASHBITS] = HASHBITS;
-   params[P_NUMTHREADS] = omp_get_num_procs() - 1;
+   params[P_NUMTHREADS] = omp_get_num_procs() > 1 ? omp_get_num_procs() - 1 : 1;
    params[P_MINDEEP] = 3;
    /* A negative value for params[P_CACHEMEM] means use that amount of  */
    /* memory if speed > c/5 and turn off caching otherwise.  A positive */
@@ -2566,7 +2588,7 @@ const char *parseVelocity(char *velString, int *per, int *off) {
       else if (b == 'd' && !c)
          return "diagonal spaceship searches are not supported.";
       else if (*off < 0)
-         return "offset must be positive.";
+         return "translation must be positive.";
       else if (b == '\0' || (b == 'o' && !c))
          return 0;
       else
@@ -2579,7 +2601,10 @@ const char *parseVelocity(char *velString, int *per, int *off) {
          if (*off == 0){
             *off = xoff;
             xoff = 0;
-            return 0;
+            if (*off < 0)
+               return "translation must be positive.";
+            else
+               return 0;
          }
          else if (xoff == *off || xoff * (-1) == *off)
             return "diagonal spaceship searches are not supported.";
@@ -2589,11 +2614,11 @@ const char *parseVelocity(char *velString, int *per, int *off) {
       else if (*off == 0)
          return "oscillator searches are not supported.";
       else if (*off < 0)
-         return "offset must be positive.";
+         return "translation must be positive.";
       else
          return 0;
    }
-   return "Unable to read offset and period.";
+   return "Unable to read translation and period.";
 }
 
 void parseOptions(int argc, char *argv[]) {
@@ -3078,7 +3103,7 @@ void searchSetup(void) {
    
    omp_set_num_threads(params[P_NUMTHREADS]);
    
-   memlimit = ((long long)params[P_MEMLIMIT]) << 20;
+   memlimit = params[P_MEMLIMIT] >= 0 ? ((long long)params[P_MEMLIMIT]) << 20 : 0;
    
    /* Allocate lookahead cache */
 #ifndef NOCACHE
