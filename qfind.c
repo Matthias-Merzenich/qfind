@@ -154,6 +154,8 @@ int lookAhead(row *pRows, int a, int pPhase){
    getoffsetcount(pRows[a - PERIOD - DOUBLEOFF(pPhase)],
                   pRows[a - DOUBLEOFF(pPhase)],
                   pRows[a - FWDOFF(pPhase)], &riStart12, &numRows12);
+   if (!numRows12)
+      return 0;
    
 #if !defined(QSIMPLE)   /* No need for conditional when using QSIMPLE */
    if (TRIPLEOFF(pPhase) >= PERIOD)
@@ -179,6 +181,8 @@ int lookAhead(row *pRows, int a, int pPhase){
       getoffsetcount(pRows[a - PERIOD - TRIPLEOFF(pPhase)],
                      pRows[a - TRIPLEOFF(pPhase)],
                      pRows[a - DOUBLEOFF(pPhase)], &riStart13, &numRows13);
+      if (!numRows13)
+         return 0;
    #ifndef NOCACHE
       k = getCacheKey(riStart11, riStart12, riStart13,
          (pRows[a-DOUBLEOFF(pPhase)] << width) + pRows[a-TRIPLEOFF(pPhase)]);
@@ -210,7 +214,7 @@ int lookAhead(row *pRows, int a, int pPhase){
                uint16_t *p = getoffset2(row13, row23);
                for (ri22 = 0; ri22 < numRows22; ++ri22){
                   row22 = riStart22[ri22];
-                  if (p[row22+1]!=p[row22]) {
+                  if (p[row22+1] != p[row22]){
 #ifndef NOCACHE
                      setCacheKey(k, 1);
 #endif

@@ -2350,7 +2350,7 @@ void loadState(void) {
    qStart = QSIZE - qEnd;
    qEnd   = QSIZE;
    qHead += qStart;
-   if (qStart > QSIZE || qStart < QSIZE/16) {
+   if (qStart > QSIZE || qStart < QSIZE/16 || qHead > qEnd) {
       printf("BFS queue is too small for saved state\n");
       exit(1);
    }
@@ -2359,7 +2359,7 @@ void loadState(void) {
    
    /* Load extension rows for each queue node */
    deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1), sizeof(*deepRows));
-   deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(deepRowIndices));
+   deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(*deepRowIndices));
    
    uint32_t theDeepIndex = 2;
    deepQTail = 0;
@@ -2369,9 +2369,13 @@ void loadState(void) {
          loadFail();
       if (j == 0){
          j = loadUInt(fp);
+         if (j > QSIZE - deepQTail)
+            loadFail();
          for (i = 0; i < j; ++i){
             deepRowIndices[deepQTail] = 1;
             ++deepQTail;
+            if (deepQTail == QSIZE)
+               loadFail();
          }
          continue;
       }
@@ -2929,7 +2933,7 @@ void searchSetup(void) {
       }
       
       deepRows = (row**)calloc(1LLU << (params[P_DEPTHLIMIT] + 1), sizeof(*deepRows));
-      deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(deepRowIndices));
+      deepRowIndices = (uint32_t*)calloc(QSIZE, sizeof(*deepRowIndices));
       
       resetQ();
       resetHash();
